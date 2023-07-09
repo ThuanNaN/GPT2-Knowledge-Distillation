@@ -6,7 +6,8 @@
 ### 1.2 Target
 - Quantization: 1.3GB -> 200MB
 - Knowledge Distillation (KD) with teacher model: GPT-neo/ GPT-2 (large)
-- Serving on Cloud (AWS/Google Cloud) with triton server
+- Triton server
+- Serving on Cloud (AWS/Google Cloud) with scaling and load balancing
 ### 1.3 Evaluation metric:
 - Perplexity
 
