@@ -14,6 +14,6 @@ def load_tokenizer(checkpoint_path: str):
 
 # add token again ? when load from our checkpoint ?
 def load_model(checkpoint_path: str):
-    model = AutoModelForCausalLM.from_pretrained(checkpoint_path)
+    model = AutoModelForCausalLM.from_pretrained(checkpoint_path, low_cpu_mem_usage=True)
     model.resize_token_embeddings(int(os.getenv("TOKENIZER_LEN")))
     return model

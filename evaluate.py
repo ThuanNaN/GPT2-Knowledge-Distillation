@@ -1,6 +1,6 @@
 import torch
 from tqdm import tqdm
-from utils.data_loader import get_text_ds
+from utils.data_processing import get_text_ds
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 
 
