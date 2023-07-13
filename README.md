@@ -14,8 +14,6 @@
 ### 1.3 Evaluation metric:
 - Perplexity (https://huggingface.co/docs/transformers/perplexity)
 
-- PPL(X) = $exp\{-\frac{1}{t} \sum_{1}^{t}log p_{\theta} (x_i|x_{<i})\}$
-
 ### 1.4 Technical
 - LoRA - https://arxiv.org/pdf/2106.09685.pdf
 - QLoRA - https://arxiv.org/pdf/2305.14314.pdf
