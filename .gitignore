@@ -1,4 +1,10 @@
 __pycache__/
+.ipynb_checkpoints/
+.DS_Store
+*.bin
+*.pkl
+*.pt
+*.pyc
 .vscode
 /data/
 /nbs/
