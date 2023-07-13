@@ -3,8 +3,7 @@ import inspect
 import torch 
 import torch.nn as nn
 from torch.nn import functional as F
-from model_cfg import GPT2Config 
-
+from models import GPT2Config
 
 class LayerNorm(nn.Module):
     def __init__(self, n_dim, bias):
