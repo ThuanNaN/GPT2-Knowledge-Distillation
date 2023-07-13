@@ -4,13 +4,13 @@ import datasets
 from pretrain_loader import load_tokenizer
 from dotenv import load_dotenv
 load_dotenv()
-logger = get_logger("dataloader")
+LOGGER = get_logger("dataloader")
 
-logger.info("Load tokenizer")
+LOGGER.info("Load tokenizer")
 tokenizer = load_tokenizer("imthanhlv/vigpt2medium")
 
 context_length = int(os.getenv("CONTEXT_LEN"))
-logger.info(f"Context length: {context_length}")
+LOGGER.info(f"Context length: {context_length}")
 
 def get_text_ds(path):
     lines = []
@@ -51,15 +51,15 @@ if __name__ == "__main__":
     train_path = './data/fashion/raw/fashion_15_10_2022_train.txt'
     test_path = './data/fashion/raw/fashion_15_10_2022_test.txt'
 
-    logger.info("Load raw dataset")
+    LOGGER.info("Load raw dataset")
     train_dataset = get_text_ds(train_path)
     test_dataset = get_text_ds(test_path)
 
-    logger.info("Tokenize train dataset")
+    LOGGER.info("Tokenize train dataset")
     tokenized_train_datasets = train_dataset.map(
         tokenize_function, batched=True, remove_columns=['text']
     )
-    logger.info("Tokenize test dataset")
+    LOGGER.info("Tokenize test dataset")
     tokenized_test_datasets = test_dataset.map(
         tokenize_function, batched=True, remove_columns=['text']
     )
@@ -67,8 +67,8 @@ if __name__ == "__main__":
     train_data_path = f'./data/fashion/processed/article_{context_length}/train'
     test_data_path = f'./data/fashion/processed/article_{context_length}/test'
 
-    logger.info(f"Train dataset path: {train_data_path}")
-    logger.info(f"Test dataset path: {test_data_path}")
+    LOGGER.info(f"Train dataset path: {train_data_path}")
+    LOGGER.info(f"Test dataset path: {test_data_path}")
 
     tokenized_train_datasets.save_to_disk(train_data_path)
     tokenized_test_datasets.save_to_disk(test_data_path)
