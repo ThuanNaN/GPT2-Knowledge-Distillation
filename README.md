@@ -4,6 +4,7 @@
 ### 1.1 Input 
 - Source model: GPT2-medium ~ 350M params ~ 1.3GB 
 - Paper: https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf 
+- Huggingface/transformers PyTorch implementation: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 - Checkpoint: https://huggingface.co/imthanhlv/vigpt2medium
 
 ### 1.2 Target
