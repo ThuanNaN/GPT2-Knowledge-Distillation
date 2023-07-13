@@ -1,0 +1,7 @@
+transformers[torch]==4.30.1
+torch==2.0.1
+datasets==2.13.1
+wandb==0.15.5
+tiktoken==0.4.0
+python-dotenv==1.0.0
+
