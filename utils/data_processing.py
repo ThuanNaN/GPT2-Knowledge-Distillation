@@ -1,4 +1,6 @@
 import os
+import numpy as np
+from tqdm import tqdm
 from logger import get_logger
 import datasets
 from pretrain_loader import load_tokenizer
@@ -29,48 +31,54 @@ def get_text_ds(path):
     return vi_ds
 
 
-def tokenize_function(sample):
-    outputs = tokenizer(
-        sample['text'],
-        truncation=True,
-        max_length=context_length,
-        return_overflowing_tokens=True,
-        return_length=True
-        #padding='max_length' # >> Fixe-length when training
+def tokenize_function(batch):
+  outputs = tokenizer(
+      batch['text'],
+      truncation=True,
+      max_length=context_length,
+      return_overflowing_tokens=True,
+      return_length=True
+      #padding='max_length'
   )
-    input_batch = []
-    for length, input_ids in zip(outputs["length"], outputs["input_ids"]):
-        input_batch.append(input_ids)
-    result = {}
-    result['input_ids'] = input_batch
-    # result["labels"] = result["input_ids"].copy()
-    return result
+  return {
+      'ids': outputs["input_ids"][0],
+      'len': outputs["length"][0]
+  }
+
 
 
 if __name__ == "__main__":
     train_path = './data/fashion/raw/fashion_15_10_2022_train.txt'
     test_path = './data/fashion/raw/fashion_15_10_2022_test.txt'
 
-    LOGGER.info("Load raw dataset")
-    train_dataset = get_text_ds(train_path)
-    test_dataset = get_text_ds(test_path)
-
-    LOGGER.info("Tokenize train dataset")
-    tokenized_train_datasets = train_dataset.map(
-        tokenize_function, batched=True, remove_columns=['text']
+    split_dataset = datasets.DatasetDict(
+        {
+            "train": get_text_ds(train_path),
+            "val": get_text_ds(test_path)
+        }
     )
-    LOGGER.info("Tokenize test dataset")
-    tokenized_test_datasets = test_dataset.map(
-        tokenize_function, batched=True, remove_columns=['text']
+    tokenized = split_dataset.map(
+        tokenize_function,
+        remove_columns=['text'],
+        desc="tokenizing the splits",
+        num_proc=2,
     )
 
-    train_data_path = f'./data/fashion/processed/article_{context_length}/train'
-    test_data_path = f'./data/fashion/processed/article_{context_length}/test'
+    LOGGER.info("Finish tokenize")
 
-    LOGGER.info(f"Train dataset path: {train_data_path}")
-    LOGGER.info(f"Test dataset path: {test_data_path}")
 
-    tokenized_train_datasets.save_to_disk(train_data_path)
-    tokenized_test_datasets.save_to_disk(test_data_path)
+    for split, dset in tokenized.items():
+        arr_len = np.sum(dset['len'], dtype=np.uint64)
+        filename = os.path.join(os.path.dirname(__file__), f'{split}.bin')
+        filename = f'./data/fashion/processed/article_{context_length}/{split}.bin'
+        dtype = np.uint16 # (can do since enc.max_token_value == 50256 is < 2**16)
+        arr = np.memmap(filename, dtype=dtype, mode='w+', shape=(arr_len,))
 
+        LOGGER.info(f"Writing {filename}...")
+        idx = 0
+        for example in tqdm(dset):
+            arr[idx : idx + example['len']] = example['ids']
+            idx += example['len']
+        LOGGER.info(f"{split} set sample: {len(dset)}")
+        arr.flush()
 
