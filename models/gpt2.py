@@ -33,7 +33,7 @@ class LayerNorm(nn.Module):
     
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, config: GPT2Config):
+    def __init__(self, config: GPT2Config, idx_layer):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
@@ -46,14 +46,20 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
+        self.idx_layer = idx_layer
+        self.scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx
         # flash attention (only support in Pytorch >0 2.0)
-        self.flash = hasattr(F, 'scaled_dot_product_attention')
-        if not self.flash:
-            LOGGER.info("WARNING: using slow attention. Flash Attention requires Pytorch >= 2.0")
-            # causal mask to ensure that attention is only applied to the left in the input sequence
-            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
-                                 ).view(1,1,config.block_size, config.block_size)
+        # self.flash = hasattr(F, 'scaled_dot_product_attention')
+        # if not self.flash:
+        #     LOGGER.info("WARNING: using slow attention. Flash Attention requires Pytorch >= 2.0")
+        #     # causal mask to ensure that attention is only applied to the left in the input sequence
+        #     self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+        #                          ).view(1,1,config.block_size, config.block_size)
+        # causal mask to ensure that attention is only applied to the left in the input sequence
+        self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                    .view(1, 1, config.block_size, config.block_size))
             
+
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence lenght, embedding dim (embd)
         #Caculate Query, Key, Value for all head in batch and move head forward to be the batch dim
@@ -62,17 +68,17 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
-        if self.flash:
-            y = F.scaled_dot_product_attention(q,k,v, attn_mask=None, 
-                                               dropout_p=self.dropout if self.training else 0,
-                                               is_causal=True)
+        if self.scale_attn_by_inverse_layer_idx:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)) / float(self.idx_layer + 1))
         else:
-            att = (q @ k.transpose(-2, 1)) * (1.0 / math.sqrt(k.size(-1)))
-            att = att.masked_fill(self.bias[:,:,:T,:T]==0, float("-inf"))
-            att = F.softmax(att, dim=-1)
-            att = self.attn_dropout(att)
-            y = att @ v   # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = y.transpose(1,2).contiguous().view(B,T,C) # re-assemble all head outputs side by side
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) 
+        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+        att = F.softmax(att, dim=-1)
+        att = self.attn_dropout(att)
+        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+
+        # output projection
         y = self.resid_dropout(self.c_proj(y))
         return y
 
@@ -93,10 +99,10 @@ class MLP(nn.Module):
         return x
 
 class Block(nn.Module):
-    def __init__(self, config: GPT2Config):
+    def __init__(self, config: GPT2Config, idx_layer):
         super().__init__()
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
-        self.attn = CausalSelfAttention(config)
+        self.attn = CausalSelfAttention(config, idx_layer)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
@@ -116,7 +122,7 @@ class GPT2(nn.Module):
             wte = nn.Embedding(config.vocab_size, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            h = nn.ModuleList([Block(config, idx_layer) for idx_layer in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias)
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
@@ -296,9 +302,7 @@ class GPT2(nn.Module):
         return optimizer
 
     def estimate_mfu(self, fwdbwd_per_iter, dt):
-        """ 
-        estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS 
-        """
+        """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
         # first estimate the number of flops we do per iteration.
         # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
         N = self.get_num_params()
@@ -308,11 +312,10 @@ class GPT2(nn.Module):
         flops_per_fwdbwd = flops_per_token * T
         flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
         # express our flops throughput as ratio of A100 bfloat16 peak flops
-        flops_achieved = flops_per_iter * (1.0 / dt)
+        flops_achieved = flops_per_iter * (1.0/dt) # per second
         flops_promised = 312e12 # A100 GPU bfloat16 peak flops is 312 TFLOPS
         mfu = flops_achieved / flops_promised
         return mfu
-
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
         """

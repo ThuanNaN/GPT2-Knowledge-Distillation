@@ -10,4 +10,4 @@ class GPT2Config:
     n_embd: int = 1024
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-
+    scale_attn_by_inverse_layer_idx: bool = False
