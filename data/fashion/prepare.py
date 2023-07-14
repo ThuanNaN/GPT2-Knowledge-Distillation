@@ -11,8 +11,7 @@ special_tokens_dict = {'additional_special_tokens': ['<|beginofdes|>','<|endofde
 num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
 tokenizer.pad_token = tokenizer.eos_token
 
-context_length = int(os.getenv("CONTEXT_LEN"))
-
+context_length = int(os.getenv("BLOCK_SIZE"))
 
 def get_text_ds(path):
     lines = []
@@ -32,53 +31,39 @@ def get_text_ds(path):
 
 
 def tokenize_function(batch):
-  outputs = tokenizer(
-      batch['text'],
-      truncation=True,
-      max_length=context_length,
-      return_overflowing_tokens=True,
-      return_length=True
-      #padding='max_length'
-  )
-  return {
-      'ids': outputs["input_ids"][0],
-      'len': outputs["length"][0]
-  }
-
-
+    outputs = tokenizer(
+        batch['text'],
+        truncation=True,
+        max_length=context_length,
+        return_overflowing_tokens=True,
+        return_length=True
+        #padding='max_length'
+    )
+    input_batch = []
+    for length, input_ids in zip(outputs["length"], outputs["input_ids"]):
+        input_batch.append(input_ids)
+    result = {}
+    result['input_ids'] = input_batch
+    # result["labels"] = result["input_ids"].copy()
+    return result
 
 if __name__ == "__main__":
     train_path = './raw/fashion_15_10_2022_train.txt'
     test_path = './raw/fashion_15_10_2022_test.txt'
 
-    split_dataset = datasets.DatasetDict(
-        {
-            "train": get_text_ds(train_path),
-            "val": get_text_ds(test_path)
-        }
+    train_ds = get_text_ds(train_path)
+    test_ds = get_text_ds(test_path)
+
+    tokenized_train_datasets = train_ds.map(
+        tokenize_function, batched=True, remove_columns=['text']
     )
-    tokenized = split_dataset.map(
-        tokenize_function,
-        remove_columns=['text'],
-        desc="tokenizing the splits",
-        num_proc=2,
+    tokenized_test_datasets = test_ds.map(
+        tokenize_function, batched=True, remove_columns=['text']
     )
+    
+    train_data_path = 'processed/train'
+    tokenized_train_datasets.save_to_disk(train_data_path)
 
-    print("Finish tokenize")
-
-
-    for split, dset in tokenized.items():
-        arr_len = np.sum(dset['len'], dtype=np.uint64)
-        filename = os.path.join(os.path.dirname(__file__), f'{split}.bin')
-        filename = f'./processed/article_{context_length}/{split}.bin'
-        dtype = np.uint16 # (can do since enc.max_token_value == 50256 is < 2**16)
-        arr = np.memmap(filename, dtype=dtype, mode='w+', shape=(arr_len,))
-
-        print(f"Writing {filename}...")
-        idx = 0
-        for example in tqdm(dset):
-            arr[idx : idx + example['len']] = example['ids']
-            idx += example['len']
-        print(f"{split} set sample: {len(dset)}")
-        arr.flush()
+    test_data_path = 'processed/test'
+    tokenized_test_datasets.save_to_disk(test_data_path)
 
