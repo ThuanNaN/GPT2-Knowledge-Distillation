@@ -6,7 +6,6 @@ __pycache__/
 *.pt
 *.pyc
 .vscode
-/data/
 /out/
 /nbs/
 /training_article/
