@@ -11,3 +11,4 @@ __pycache__/
 /training_article/
 /wandb/
 test.py
+*.sh
