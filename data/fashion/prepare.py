@@ -11,7 +11,7 @@ special_tokens_dict = {'additional_special_tokens': ['<|beginofdes|>','<|endofde
 num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
 tokenizer.pad_token = tokenizer.eos_token
 
-context_length = int(os.getenv("BLOCK_SIZE"))
+context_length = int(os.getenv("CONTEXT_LEN"))
 
 def get_text_ds(path):
     lines = []
@@ -36,8 +36,8 @@ def tokenize_function(batch):
         truncation=True,
         max_length=context_length,
         return_overflowing_tokens=True,
-        return_length=True
-        #padding='max_length'
+        return_length=True,
+        padding='max_length'
     )
     input_batch = []
     for length, input_ids in zip(outputs["length"], outputs["input_ids"]):
