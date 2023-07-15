@@ -16,16 +16,16 @@ comes up with a better simple Python solution I am all ears.
 
 import sys
 from ast import literal_eval
-from utils.logger import get_logger
-LOGGER = get_logger("Configurator")
+from utils import logger
+
 for arg in sys.argv[1:]:
     if '=' not in arg:
         # assume it's the name of a config file
         assert not arg.startswith('--')
         config_file = arg
-        LOGGER.info(f"Overriding config with {config_file}:")
+        logger.info(f"Overriding config with {config_file}:")
         with open(config_file) as f:
-            LOGGER.info(f.read())
+            logger.info(f.read())
         exec(open(config_file).read())
     else:
         # assume it's a --key=value argument
@@ -42,7 +42,7 @@ for arg in sys.argv[1:]:
             # ensure the types match ok
             assert type(attempt) == type(globals()[key])
             # cross fingers
-            LOGGER.info(f"Overriding: {key} = {attempt}")
+            logger.info(f"Overriding: {key} = {attempt}")
             globals()[key] = attempt
         else:
             raise ValueError(f"Unknown config key: {key}")
