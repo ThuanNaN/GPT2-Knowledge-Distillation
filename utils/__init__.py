@@ -1,4 +1,4 @@
-from .pretrain_loader import load_model, load_tokenizer
+from .pretrain_loader import load_model_from_pretrain, load_tokenizer
 import logging
 
 logging.basicConfig(

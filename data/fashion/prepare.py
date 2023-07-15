@@ -37,7 +37,7 @@ def tokenize_function(batch):
         max_length=context_length,
         return_overflowing_tokens=True,
         return_length=True,
-        padding='max_length'
+        # padding='max_length'
     )
     input_batch = []
     for length, input_ids in zip(outputs["length"], outputs["input_ids"]):
