@@ -8,7 +8,7 @@ __pycache__/
 .vscode
 /out/
 /nbs/
-/training_article/
+/ft_teacher/
 /wandb/
 test.py
 *.sh

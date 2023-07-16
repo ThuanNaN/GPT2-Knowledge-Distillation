@@ -53,7 +53,7 @@ def train(model):
         load_best_model_at_end=True,
         metric_for_best_model='loss',
         optim='adamw_torch',
-        report_to="none",
+        report_to="wandb",
     )
     wandb.init(
         project="distill-gpt2m",
