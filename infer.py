@@ -5,11 +5,14 @@ import torch
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 
-    model = GPT2LMHeadModel.from_pretrained("imthanhlv/vigpt2medium").to(device)
-    tokenizer = GPT2TokenizerFast.from_pretrained("imthanhlv/vigpt2medium") 
+    model_ckpt = './nbs/training_article/checkpoint-46008'
 
-    prompt = "áo sơ mi" # your input sentence
-    input_ids = tokenizer("{}<|beginofdes|>".format(prompt), return_tensors="pt")['input_ids'].to(device)
+
+    model = GPT2LMHeadModel.from_pretrained(model_ckpt)
+    tokenizer = GPT2TokenizerFast.from_pretrained(model_ckpt) 
+
+    prompt = "áo khoác" # your input sentence
+    input_ids = tokenizer("{}<|beginofdes|>".format(prompt), return_tensors="pt")['input_ids']
 
     max_length = 100
     gen_tokens = model.generate(
@@ -17,8 +20,10 @@ if __name__ == "__main__":
             max_length=max_length,
             do_sample=True,
             temperature=0.9,
+            num_beams = 3,
             top_k=20,
-            pad_token_id=tokenizer.eos_token_id
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id = 50259
         )
     
     gen_text = tokenizer.batch_decode(gen_tokens)[0]

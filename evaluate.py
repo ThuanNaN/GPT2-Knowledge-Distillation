@@ -1,8 +1,23 @@
 import torch
 from tqdm import tqdm
-from utils.data_processing import get_text_ds
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel
+import datasets
 
+def get_text_ds(path):
+    lines = []
+    text = ''
+    with open(path) as f:
+        for line in f:
+            if line.find('xxxxxEndxxxxx') != -1:
+                if text.strip():
+                    lines.append(text.strip())
+                    text = ''
+                else:
+                    continue
+            else:
+                text = text + line
+    vi_ds = datasets.Dataset.from_dict({'text': lines})
+    return vi_ds
 
 # https://huggingface.co/docs/transformers/perplexity
 def compute_ppl(model, encodings, device:str):
@@ -39,16 +54,18 @@ def compute_ppl(model, encodings, device:str):
 if __name__ == "__main__":
     device = "cuda"
 
-    model = GPT2LMHeadModel.from_pretrained("imthanhlv/vigpt2medium").to(device)
-    tokenizer = GPT2TokenizerFast.from_pretrained("imthanhlv/vigpt2medium") 
+    model_ckpt = './nbs/training_article/checkpoint-46008'
+
+    model = GPT2LMHeadModel.from_pretrained(model_ckpt).to(device)
+    tokenizer = GPT2TokenizerFast.from_pretrained(model_ckpt) 
 
     special_tokens_dict = {'additional_special_tokens': ['<|beginofdes|>','<|endofdes|>', '<br>']}
     num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
     model.resize_token_embeddings(len(tokenizer))
     tokenizer.pad_token = tokenizer.eos_token
 
-    test_ds = get_text_ds('./data/fashion/fashion_15_10_2022_test.txt')
-    encodings = tokenizer("\n\n".join(test_ds["text"]), return_tensors="pt")
+    test_ds = get_text_ds('./data/fashion/raw/fashion_15_10_2022_train.txt')
+    encodings = tokenizer(" ".join(test_ds["text"]), return_tensors="pt")
 
     ppl = compute_ppl(
         model,
