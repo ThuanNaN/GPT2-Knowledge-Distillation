@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -12,6 +13,7 @@ num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
 tokenizer.pad_token = tokenizer.eos_token
 
 context_length = int(os.getenv("CONTEXT_LEN"))
+num_proc = 4
 
 def get_text_ds(path):
     lines = []
@@ -29,7 +31,6 @@ def get_text_ds(path):
     vi_ds = datasets.Dataset.from_dict({'text': lines})
     return vi_ds
 
-
 def tokenize_function(batch):
     outputs = tokenizer(
         batch['text'],
@@ -38,32 +39,42 @@ def tokenize_function(batch):
         return_overflowing_tokens=True,
         return_length=True,
         padding='max_length'
-    )
-    input_batch = []
-    for length, input_ids in zip(outputs["length"], outputs["input_ids"]):
-        input_batch.append(input_ids)
-    result = {}
-    result['input_ids'] = input_batch
-    # result["labels"] = result["input_ids"].copy()
+    )["input_ids"][0]
+    result = {
+        "ids": outputs,
+        "len": len(outputs)
+    }
     return result
 
 if __name__ == "__main__":
     train_path = './raw/fashion_15_10_2022_train.txt'
     test_path = './raw/fashion_15_10_2022_test.txt'
 
-    train_ds = get_text_ds(train_path)
-    test_ds = get_text_ds(test_path)
-
-    tokenized_train_datasets = train_ds.map(
-        tokenize_function, batched=True, remove_columns=['text']
+    tokenized = datasets.DatasetDict(
+        {
+            'train': get_text_ds(train_path),
+            'val': get_text_ds(test_path)
+        }
+    ).map(
+        tokenize_function,
+        remove_columns=['text'],
+        desc="tokenizing the splits",
+        num_proc=num_proc,
     )
-    tokenized_test_datasets = test_ds.map(
-        tokenize_function, batched=True, remove_columns=['text']
-    )
-    
-    train_data_path = 'processed/train'
-    tokenized_train_datasets.save_to_disk(train_data_path)
 
-    test_data_path = 'processed/test'
-    tokenized_test_datasets.save_to_disk(test_data_path)
+    print('tokenization finished')
+    # concatenate all the ids in each dataset into one large file we can use for training
+    for split, dset in tokenized.items():
+        arr_len = np.sum(dset['len'])
+        filename = Path(".") / f"{split}.bin"
+        dtype = np.uint16 # (can do since enc.max_token_value == 50256 is < 2**16)
+        arr = np.memmap(filename, dtype=dtype, mode='w+', shape=(arr_len,))
 
+        print(f"writing {filename}...")
+        idx = 0
+        for example in tqdm(dset):
+            arr[idx : idx + example['len']] = example['ids']
+            idx += example['len']
+        arr.flush()
+
+        
