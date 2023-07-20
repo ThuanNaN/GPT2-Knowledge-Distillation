@@ -2,12 +2,11 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 *.bin
+*.txt
 *.pkl
 *.pt
 *.pyc
 .vscode
-/out/
-/ft_teacher/
 /wandb/
 test.py
 *.sh
