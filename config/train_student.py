@@ -9,7 +9,7 @@ dataset = 'shakespeare_char'
 log_interval = 10 
 
 eval_interval = 200 
-eval_iters = 200
+eval_iters = 500
 always_save_checkpoint = False
 
 
