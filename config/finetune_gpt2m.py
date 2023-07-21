@@ -2,7 +2,7 @@ wandb_log = True
 wandb_project = 'mle'
 wandb_run_name = 'ft-teacher-adamw-drop01'
 
-out_dir = 'out-shakespeare-char-gpt2m'
+out_dir = 'shakespeare-char-gpt2m'
 
 dataset = 'shakespeare_char'
 
