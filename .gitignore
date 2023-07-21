@@ -10,3 +10,4 @@ __pycache__/
 /wandb/
 test.py
 *.sh
+*.zip
