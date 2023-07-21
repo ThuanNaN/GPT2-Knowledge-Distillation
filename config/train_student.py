@@ -1,6 +1,6 @@
 wandb_log = True 
 wandb_project = 'mle'
-wandb_run_name = 'train-student'
+wandb_run_name = 'train-student-adamw-drop02'
 
 out_dir = 'out-shakespeare-char-baby'
 
