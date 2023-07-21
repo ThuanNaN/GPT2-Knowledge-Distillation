@@ -1,7 +1,7 @@
 import math
 import inspect
 from dataclasses import dataclass
-from optimizers import SophiaG
+from sophia import SophiaG
 
 import torch
 import torch.nn as nn
@@ -186,9 +186,7 @@ class GPT(nn.Module):
             # if we are given some desired targets also calculate the loss
             if not isinstance(targets, int):
                 logits = self.lm_head(x)
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_targets = targets[..., 1:].contiguous()
-                loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_targets.view(-1))
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
             else:
                 logits = self.lm_head(x)
                 loss = None
@@ -210,7 +208,7 @@ class GPT(nn.Module):
             block.attn.bias = block.attn.bias[:,:,:block_size,:block_size]
 
     @classmethod
-    def from_pretrained(cls, model_type, init_name, override_args=None):
+    def from_pretrained(cls, model_type, override_args=None):
         assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
         override_args = override_args or {} # default to empty dict
         # only dropout can be overridden see more notes below
@@ -241,7 +239,7 @@ class GPT(nn.Module):
         sd_keys = [k for k in sd_keys if not k.endswith('.attn.bias')] # discard this mask / buffer, not a param
 
         # init a huggingface/transformers model
-        model_hf = GPT2LMHeadModel.from_pretrained(init_name)
+        model_hf = GPT2LMHeadModel.from_pretrained(model_type)
         sd_hf = model_hf.state_dict()
 
         # copy while ensuring all of the parameters are aligned and match in names and shapes

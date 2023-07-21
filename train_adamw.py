@@ -1,4 +1,3 @@
-
 import os
 import time
 import math
@@ -23,23 +22,23 @@ eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
-wandb_log = True # disabled by default
-wandb_project = 'mle'
+wandb_log = False # disabled by default
+wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
-dataset = 'fashion'
+dataset = 'openwebtext'
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 512
+block_size = 1024
 # model
-n_layer = 24
-n_head = 16
-n_embd = 1024
+n_layer = 12
+n_head = 12
+n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
-max_iters = 500000 # total number of training iterations
+max_iters = 600000 # total number of training iterations
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -47,7 +46,7 @@ grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
 # learning rate decay settings
 decay_lr = True # whether to decay the learning rate
 warmup_iters = 2000 # how many steps to warm up for
-lr_decay_iters = 500000 # should be ~= max_iters per Chinchilla
+lr_decay_iters = 600000 # should be ~= max_iters per Chinchilla
 min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
 # DDP settings
 backend = 'nccl' # 'nccl', 'gloo', etc.
@@ -100,11 +99,9 @@ train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mod
 val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
 def get_batch(split):
     data = train_data if split == 'train' else val_data
-    # len() -> train -> 40803
-    # len() -> val -> 10201
-    ix = torch.randint(((len(data) - block_size) // block_size), (batch_size,))
-    x = torch.stack([torch.from_numpy((data[int(i*block_size):int((i+1)*block_size)]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[int(i*block_size+1):int((i+1)*block_size+1)]).astype(np.int64)) for i in ix])
+    ix = torch.randint(len(data) - block_size, (batch_size,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
@@ -168,7 +165,6 @@ elif init_from.startswith('gpt2'):
     # read off the created config params, so we can store them into checkpoint correctly
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = getattr(model.config, k)
-
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)

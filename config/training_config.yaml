@@ -1,4 +1,0 @@
-batch_size: 4
-training_epoch: 10
-gradient_accumulation_steps: 2
-learning_rate: 0.005
