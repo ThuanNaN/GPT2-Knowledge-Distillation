@@ -2,18 +2,17 @@
 
 ## 1. Optimize
 ### 1.1 Input 
-- Source model: GPT2-medium ~ 350M params ~ 1.3GB 
+- Source model: GPT2-medium ~ 354M params ~ 1.3GB 
 - Paper: https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf 
 - Huggingface/transformers PyTorch implementation: https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
-- Checkpoint: https://huggingface.co/imthanhlv/vigpt2medium
 
 ### 1.2 Target
 - Quantization / Prune: GPT2-m (1.3GB) -> GPT2-baby (~200MB)
 - Knowledge Distillation (KD) from teacher model: GPT2-m to GPT2-custom
-- Triton server (https://github.com/triton-inference-server/server)
+- [Triton server](https://github.com/triton-inference-server/server)
 - Serving on Cloud (AWS/Google Cloud) with scaling and load balancing
 ### 1.3 Evaluation metric:
-- Perplexity (https://huggingface.co/docs/transformers/perplexity)
+- [Perplexity](https://huggingface.co/docs/transformers/perplexity)
 
 ### 1.4 Technical
 - LoRA - https://arxiv.org/pdf/2106.09685.pdf
@@ -24,10 +23,10 @@
 ### 2.1  Dataset
 - Fashion dataset
 ### 2.3 Libraries (Python 3.9)
-- Pytorch (2.0): https://pytorch.org/docs/stable/index.html
-- PyTorch Accelerate: https://huggingface.co/docs/accelerate/index
-- ONNX: https://github.com/onnx/onnx
-- TensorRT: https://github.com/NVIDIA/TensorRT
+- [Pytorch (2.0)](https://pytorch.org/docs/stable/index.html)
+- [PyTorch Accelerate](https://huggingface.co/docs/accelerate/index)
+- [ONNX](https://github.com/onnx/onnx)
+- [TensorRT:](https://github.com/NVIDIA/TensorRT)
 
 ### 2.4 Survey
 #### Quantization / Prune

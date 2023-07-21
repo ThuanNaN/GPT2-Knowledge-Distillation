@@ -1,8 +1,8 @@
 wandb_log = True 
 wandb_project = 'mle'
-wandb_run_name = 'train-student-adamw-drop02'
+wandb_run_name = 'train-student02-adamw-drop02'
 
-out_dir = 'out-shakespeare-char-baby'
+out_dir = 'shakespeare-char-baby'
 
 dataset = 'shakespeare_char'
 
@@ -18,7 +18,7 @@ gradient_accumulation_steps = 1
 
 block_size = 256 
 
-# baby GPT model :)
+# baby GPT model
 n_layer = 6
 n_head = 6
 n_embd = 384
