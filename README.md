@@ -28,18 +28,18 @@ emb: 384
 #### Teacher:
 | Model        | Params | Size  |  loss  |
 |:----------   | :----: | :---: |  :---: |
-| GPT2-medium  |  354M  | 1.3GB | 1.3469 |
+| GPT2-medium  |  354M  | 1.3GB | 1.3491 |
 
 
 #### Student:
 | Model 	  | Params 	| Size   | loss    |             |
 |:----------  | :----:	| :---:  |:-------:|:-----------:|
 |       	  |        	|        | Scratch | Distillation|
-| GPT-baby  |  10M    |  10MB  | 1.4605  |             |
+| GPT-baby    |  10M    |  10MB  | 1.4605  |             |
 
 
 #### Checkpoint
-- GPT2-medium:
+- GPT2-medium: [gdrive](https://drive.google.com/file/d/1OqK1qSn4QXRawimao_ZXYH8xlEoJ4aHU/view?usp=sharing)
 - GPT-baby: [gdrive](https://drive.google.com/file/d/1JR8aqobiRmKU2N_ItDmQMoYOHigQJ9LN/view?usp=sharing)
 
 
