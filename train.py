@@ -17,7 +17,6 @@ device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.aut
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(iter, warmup_iters, learning_rate, lr_decay_iters, min_lr):
     # 1) linear warmup for warmup_iters steps
@@ -62,9 +61,7 @@ def estimate_loss(model, dataloader, eval_iters, **kwargs):
     model.train()
     return out
 
-
 def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
-    # initialize a GradScaler. If enabled=False scaler is a no-op
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
     if compile:
         print("compiling the model... (takes a ~minute)")
@@ -76,14 +73,11 @@ def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
         "lr_decay_iters": opt.lr_decay_iters,
         "min_lr": opt.min_lr
     }
-
-    # training loop
     X, Y = get_batch('train') # fetch the very first batch
     t0 = time.time()
     local_iter_num = 0 # number of iterations in the lifetime of this process
     running_mfu = -1.0
     while True:
-        # determine and set the learning rate for this iteration
         lr = get_lr(iter_num, **lr_decay_args) if opt.decay_lr else opt.learning_rate
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
@@ -98,7 +92,7 @@ def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
                     "train/loss": losses['train'],
                     "val/loss": losses['val'],
                     "lr": lr,
-                    "mfu": running_mfu*100, # convert to percentage
+                    "mfu": running_mfu*100,
                 })
             if losses['val'] < best_val_loss or opt.always_save_ckpt:
                 best_val_loss = losses['val']
@@ -116,24 +110,17 @@ def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
     
         if iter_num == 0 and opt.eval_only:
             break
-        # forward backward update, with optional gradient accumulation to simulate larger batch size
-        # and using the GradScaler if data type is float16
         for _ in range(opt.accumulation_steps):
             with ctx:
                 logits, loss = model(X, Y)
-                loss = loss / opt.accumulation_steps # scale the loss to account for gradient accumulation
-            # immediately async prefetch next batch while model is doing the forward pass on the GPU
+                loss = loss / opt.accumulation_steps
             X, Y = get_batch('train')
-            # backward pass, with gradient scaling if training in fp16
             scaler.scale(loss).backward()
-        # clip the gradient
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip)
-        # step the optimizer and scaler if training in fp16
         scaler.step(optimizer)
         scaler.update()
-        # flush the gradients as soon as we can, no need for this memory anymore
         optimizer.zero_grad(set_to_none=True)
 
         # timing and logging
@@ -141,8 +128,6 @@ def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
         dt = t1 - t0
         t0 = t1
         if iter_num % opt.log_interval == 0:
-            # get loss as float. note: this is a CPU-GPU sync point
-            # scale up to undo the division above, approximating the true total loss (exact would have been a sum)
             lossf = loss.item() * opt.accumulation_steps
             if local_iter_num >= 5: # let the training loop settle a bit
                 mfu = model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
@@ -202,14 +187,11 @@ if __name__ == "__main__":
     parser.add_argument('--compile', action='store_true', help='')
     opt = parser.parse_args()
 
-
     # logging
     if opt.wandb_log:
         import wandb
         wandb.init(project=opt.wandb_project, name=opt.wandb_run_name, config=opt)
-
     os.makedirs(opt.save_dir, exist_ok=True)
-
 
     tokens_per_iter = opt.accumulation_steps * opt.batch_size * opt.block_size
     print(f"tokens per iteration will be: {tokens_per_iter:,}")
