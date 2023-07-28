@@ -33,7 +33,7 @@ def get_lr(iter, warmup_iters, learning_rate, lr_decay_iters, min_lr):
 
 
 # poor man's data loader
-def get_batch(data, batch_size, block_size, device, device_type):
+def get_batch(data, batch_size, block_size):
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
@@ -46,11 +46,11 @@ def get_batch(data, batch_size, block_size, device, device_type):
 
 
 @torch.no_grad()
-def estimate_loss(model, dataloader, eval_iters, **kwargs):
+def estimate_loss(model, dataloaders, eval_iters, **kwargs):
     out = {}
     model.eval()
     for split in ['train', 'val']:
-        data = dataloader['split']
+        data = dataloaders[split]
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = get_batch(data, **kwargs)
@@ -61,9 +61,9 @@ def estimate_loss(model, dataloader, eval_iters, **kwargs):
     model.train()
     return out
 
-def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
+def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
-    if compile:
+    if opt.compile:
         print("compiling the model... (takes a ~minute)")
         model = torch.compile(model) # requires PyTorch 2.0
     
@@ -73,7 +73,12 @@ def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
         "lr_decay_iters": opt.lr_decay_iters,
         "min_lr": opt.min_lr
     }
-    X, Y = get_batch('train') # fetch the very first batch
+    get_batch_args = {
+        "batch_size": opt.batch_size , 
+        "block_size": opt.block_size, 
+    }
+
+    X, Y = get_batch(dataloaders['train'], **get_batch_args) # fetch the very first batch
     t0 = time.time()
     local_iter_num = 0 # number of iterations in the lifetime of this process
     running_mfu = -1.0
@@ -84,7 +89,7 @@ def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
 
         # evaluate the loss on train/val sets and write checkpoints
         if iter_num % opt.eval_interval == 0:
-            losses = estimate_loss()
+            losses = estimate_loss(model, dataloaders, opt.eval_iters, **get_batch_args)
             print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
             if opt.wandb_log:
                 wandb.log({
@@ -114,7 +119,7 @@ def train(opt, model, optimizer, iter_num, best_val_loss, dtype):
             with ctx:
                 logits, loss = model(X, Y)
                 loss = loss / opt.accumulation_steps
-            X, Y = get_batch('train')
+            X, Y = get_batch(dataloaders['train'], **get_batch_args)
             scaler.scale(loss).backward()
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
@@ -199,7 +204,7 @@ if __name__ == "__main__":
     data_dir = os.path.join('data', opt.dataset)
     train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-    dataloader = {
+    dataloaders = {
         "train": train_data,
         "val": val_data
     }
@@ -222,18 +227,18 @@ if __name__ == "__main__":
     iter_num = initialized['resume_agrs']['iter_num']
     best_val_loss = initialized['resume_agrs']['best_val_loss']
 
-    # optimizer
-    optimizer = model.configure_optimizers(opt.weight_decay, opt.learning_rate, (opt.beta1, opt.beta2), device_type)
-    if opt.init_from == 'resume':
-        optimizer.load_state_dict(initialized['checkpoint']['optimizer'])
-    checkpoint = None # free up memory
-
     # crop down the model block size if desired, using model surgery
     if opt.block_size < model.config.block_size:
         model.crop_block_size(opt.block_size)
         opt.model_args['block_size'] = opt.block_size # so that the checkpoint will have the right value
     model.to(device)
 
-    train(opt, model, optimizer, iter_num, best_val_loss, dtype, device_type)
+    # optimizer
+    optimizer = model.configure_optimizers(opt.weight_decay, opt.learning_rate, (opt.beta1, opt.beta2), device_type)
+    if opt.init_from == 'resume':
+        optimizer.load_state_dict(initialized['checkpoint']['optimizer'])
+    checkpoint = None # free up memory
+
+    train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype)
 
 
