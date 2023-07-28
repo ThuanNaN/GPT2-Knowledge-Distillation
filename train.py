@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--dataset', type=str, default="shakespeare_char", help='')
 
-    parser.add_argument('--batch_size', type=int, default=32, help='')
+    parser.add_argument('--batch-size', type=int, default=32, help='')
     parser.add_argument('--accumulation-steps', type=int, default=1, help='')
     parser.add_argument('--block-size', type=int, default=1024, help='')
 

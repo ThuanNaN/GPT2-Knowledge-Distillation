@@ -5,15 +5,15 @@ python train.py --save-dir shakespeare-char-baby \
                 --eval-interval 200 \
                 --eval-iters 500 \
                 --batch-size 64 \
-                --accumulation_steps 1 \
+                --accumulation-steps 1 \
                 --block-size 256 \
-                --num_layer 6 \
-                --num_head 6 \
-                --num_embd 384 \ 
+                --num-layer 6 \
+                --num-head 6 \
+                --num-embd 384 \
                 --dropout 0.2 \
                 --max-iters 5000 \
                 --learning-rate 1e-3 \
                 --lr-decay-iters 5000 \
-                --min_lr 1e-4 \
+                --min-lr 1e-4 \
                 --beta2 0.99 \
                 --warmup-iters 200 
