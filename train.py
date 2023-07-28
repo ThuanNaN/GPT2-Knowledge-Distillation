@@ -214,7 +214,7 @@ if __name__ == "__main__":
     initialized = initialize_model(init_from = opt.init_from,
                                     ckpt_dir = opt.save_dir,
                                     data_dir = opt.dataset,
-                                    device = opt.device,
+                                    device = device,
                                     **model_cfg)
     
     model = initialized['model']
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     if opt.block_size < model.config.block_size:
         model.crop_block_size(opt.block_size)
         opt.model_args['block_size'] = opt.block_size # so that the checkpoint will have the right value
-    model.to(opt.device)
+    model.to(device)
 
     train(opt, model, optimizer, iter_num, best_val_loss, dtype, device_type)
 
