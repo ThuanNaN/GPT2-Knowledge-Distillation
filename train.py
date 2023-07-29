@@ -149,47 +149,42 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--wandb-log', action='store_true', help='Log result into WanDB')
-    parser.add_argument('--wandb-project', type=str, default="gpt2-medium", help='')
-    parser.add_argument('--wandb-run-name', type=str, default="gpt2m-init", help='')
-    parser.add_argument('--save-dir', type=str, default="output", help='')
+    parser.add_argument('--wandb-project', type=str, default="gpt2-medium", help='WandB project name')
+    parser.add_argument('--wandb-run-name', type=str, default="gpt2m-init", help='WandB run name')
 
-    parser.add_argument('--dataset', type=str, default="shakespeare_char", help='')
+    parser.add_argument('--save-dir', type=str, default="output", help='place to save checkpoint')
+    parser.add_argument('--dataset', type=str, default="shakespeare_char", help='dataset folder')
 
-    parser.add_argument('--batch-size', type=int, default=32, help='')
-    parser.add_argument('--accumulation-steps', type=int, default=1, help='')
-    parser.add_argument('--block-size', type=int, default=1024, help='')
-
-    # model
-    parser.add_argument('--num-layer', type=int, default=24, help='')
-    parser.add_argument('--num-head', type=int, default=16, help='')
-    parser.add_argument('--num-embd', type=int, default=1024, help='')
-    parser.add_argument('--dropout', type=float, default=0.0, help='')
-    parser.add_argument('--bias', action='store_true', help='')
-
+    parser.add_argument('--batch-size', type=int, default=32, help='if gradient_accumulation_steps > 1, this is the micro-batch size')
+    parser.add_argument('--accumulation-steps', type=int, default=1, help='used to simulate larger batch sizes')
+    parser.add_argument('--block-size', type=int, default=1024, help='context length')
+    # model config
+    parser.add_argument('--init-from', type=str, default="scratch", help="'scratch' or 'resume' or 'gpt2*")
+    parser.add_argument('--num-layer', type=int, default=24, help='number of transformer layer')
+    parser.add_argument('--num-head', type=int, default=16, help='number of head in multi-head')
+    parser.add_argument('--num-embd', type=int, default=1024, help='number of embedding dim')
+    parser.add_argument('--dropout', type=float, default=0.0, help='for pretraining 0 is good, for finetuning try 0.1+')
+    parser.add_argument('--bias', action='store_true', help='do we use bias inside LayerNorm and Linear layers?')
     # adamw optimizer
-    parser.add_argument('--max-iters', type=int, default=50000, help='')
-    parser.add_argument('--learning-rate', type=float, default=6e-4, help='')
-    parser.add_argument('--weight-decay', type=float, default=1e-1, help='')
+    parser.add_argument('--max-iters', type=int, default=50000, help='number of interations training')
+    parser.add_argument('--learning-rate', type=float, default=6e-4, help='max learning rate')
+    parser.add_argument('--weight-decay', type=float, default=1e-1, help='weight decay for optimizer')
     parser.add_argument('--beta1', type=float, default=0.9, help='')
     parser.add_argument('--beta2', type=float, default=0.95, help='')
-    parser.add_argument('--grad-clip', type=float, default=1.0, help='')
-
+    parser.add_argument('--grad-clip', type=float, default=1.0, help='clip gradients at this value, or disable if == 0.0')
     # learning rate decay settings
     parser.add_argument('--decay-lr', action='store_true', help='whether to decay the learning rate')
     parser.add_argument('--warmup-iters', type=int, default=2000, help='how many steps to warm up for')
     parser.add_argument('--lr-decay-iters', type=int, default=50000, help='should be ~= max_iters per Chinchilla')
     parser.add_argument('--min-lr', type=float, default=6e-5, help='minimum learning rate, \
                                                                     should be ~= learning_rate/10 per Chinchilla')
-
+    #eval and log
     parser.add_argument('--eval-interval', type=int, default=2000, help='')
     parser.add_argument('--log-interval', type=int, default=1, help='')
-    parser.add_argument('--eval-iters', type=int, default=200, help='')
+    parser.add_argument('--eval-iters', type=int, default=200, help='number of iters using evaluation')
     parser.add_argument('--eval-only', action='store_true', help='if True, script exits right after the first eval')
     parser.add_argument('--always-save-ckpt', action='store_true', help='if True, always save a checkpoint after each eval')
-
-    parser.add_argument('--init-from', type=str, default="scratch", help="'scratch' or 'resume' or 'gpt2*")
-
-    parser.add_argument('--compile', action='store_true', help='')
+    parser.add_argument('--compile', action='store_true', help='use to compile torch model, required torch>=2.0.1')
     opt = parser.parse_args()
 
     # logging
@@ -240,5 +235,3 @@ if __name__ == "__main__":
     checkpoint = None # free up memory
 
     train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype)
-
-
