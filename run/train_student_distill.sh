@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-python train_adamw.py --wandb-log \
+python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student_distill \
                         --save-dir shakespeare-char-baby \
                         --dataset shakespeare_char \
                         --log-interval 10 \
