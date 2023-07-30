@@ -1,44 +1,28 @@
 import torch
-from models.gpt_nano import GPT, GPTConfig
+# from models.gpt_nano import GPT, GPTConfig
 import pickle
 from contextlib import nullcontext
 import tiktoken
-from utils import seed_everything
-
-top_k = 200
-temperature = 0.8
-num_samples = 5
-max_new_tokens = 100
-device = 'cpu'
-
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+from utils import seed_everything, model_from_ckpt
 
 seed = 10
 seed_everything(seed)
 
+
+top_k = 200
+temperature = 0.8
+num_samples = 5
+max_new_tokens = 200
+device = 'cuda' 
+
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-
-
-device = 'cpu'
 ckpt_path = './ckpt/teacher.pt'
-checkpoint = torch.load(ckpt_path, map_location=device)
-checkpoint_model_args = checkpoint['model_args']
-
-gptconf = GPTConfig(**checkpoint_model_args)
-model = GPT(gptconf)
-
-state_dict = checkpoint['model']
-unwanted_prefix = '_orig_mod.'
-for k,v in list(state_dict.items()):
-    if k.startswith(unwanted_prefix):
-        state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-model.load_state_dict(state_dict)
-best_val_loss = checkpoint['best_val_loss']
-print("Best val loss: ", best_val_loss)
-
+model = model_from_ckpt(ckpt_path, device)
+model.to(device)
 
 load_meta = True
 meta_path = "./data/shakespeare_char/meta.pkl"
@@ -58,9 +42,10 @@ else:
     decode = lambda l: enc.decode(l)
 
 
-start = "What is the answer to life, the universe, and everything?"
+start = "What is the answer to work?"
 start_ids = encode(start)
 x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
+
 # run generation
 with torch.no_grad():
     with ctx:
@@ -68,7 +53,4 @@ with torch.no_grad():
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
             print(decode(y[0].tolist()))
             print('---------------')
-
-
-
 
