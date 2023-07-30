@@ -1,6 +1,7 @@
 #!/usr/bin/bash
-python train_adamw.py --save-dir shakespeare-char-baby \
-                        --dataset shakespeare_char \
+python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name teacher \
+                        --save-dir shakespeare-student \
+                        --dataset shakespeare \
                         --log-interval 10 \
                         --eval-interval 200 \
                         --eval-iters 500 \
