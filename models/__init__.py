@@ -1,0 +1,1 @@
+from m_gpt import GPT, GPTConfig

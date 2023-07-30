@@ -1,8 +1,7 @@
 import os
 import pickle
 import torch
-from models.gpt_nano import GPT, GPTConfig
-
+from models import GPT, GPTConfig
 
 def initialize_model(
     init_from: str = "scratch",

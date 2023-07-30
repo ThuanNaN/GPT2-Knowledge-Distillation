@@ -1,5 +1,5 @@
 import torch
-from models.gpt_nano import GPT, GPTConfig
+from models import GPT, GPTConfig
 
 def seed_everything(seed: int):
     torch.manual_seed(seed)
