@@ -55,13 +55,13 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
         for k in range(eval_iters):
             X, Y = get_batch(data, **kwargs)
             with ctx:
-                _, loss = model(X, Y)
-            losses[k] = loss.item()
+                outputs = model(X, Y)
+            losses[k] = outputs['loss'].item()
         out[split] = losses.mean()
     model.train()
     return out
 
-def train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_val_loss, dtype):
+def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, iter_num, best_val_loss, dtype):
     t_model.eval()
 
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
@@ -82,6 +82,7 @@ def train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_
 
     X, Y = get_batch(dataloaders['train'], **get_batch_args) # fetch the very first batch
     t0 = time.time()
+    local_iter_num = 0 # number of iterations in the lifetime of this process
     running_mfu = -1.0
     while True:
         lr = get_lr(iter_num, **lr_decay_args) if opt.decay_lr else opt.learning_rate
@@ -90,7 +91,7 @@ def train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_
 
         # evaluate the loss on train/val sets and write checkpoints
         if iter_num % opt.eval_interval == 0:
-            losses = estimate_loss(s_model, dataloaders, opt.eval_iters, **get_batch_args)
+            losses = estimate_loss(student_model, dataloaders, opt.eval_iters, **get_batch_args)
             print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
             if opt.wandb_log:
                 wandb.log({
@@ -104,7 +105,7 @@ def train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_
                 best_val_loss = losses['val']
                 if iter_num > 0:
                     checkpoint = {
-                        'model': s_model.state_dict(),
+                        'model': student_model.state_dict(),
                         'optimizer': optimizer.state_dict(),
                         'model_args': opt.model_args,
                         'iter_num': iter_num,
@@ -118,16 +119,25 @@ def train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_
             break
         for _ in range(opt.accumulation_steps):
             with ctx:
-                s_logits, s_loss = s_model(X, Y)
+                student_outputs= student_model(X, Y)
 
-                loss = loss / opt.accumulation_steps
+                loss = student_outputs['loss'] / opt.accumulation_steps
             
             with torch.no_grad():
                 with ctx:
-                    t_logits, t_loss = s_model(X)
+                    teacher_outputs = teacher_model(X)
+
+            s_logits, s_hidden_states = student_outputs['logits'], student_outputs['hidden_states']
+            t_logits, t_hidden_states = teacher_outputs['logits'], teacher_outputs['hidden_states']
+            assert t_logits.size() == s_logits.size()
+        
+            mask = attention_mask.unsqueeze(-1).expand_as(s_logits)
+
+
 
             X, Y = get_batch(dataloaders['train'], **get_batch_args)
             scaler.scale(loss).backward()
+            
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(s_model.parameters(), opt.grad_clip)

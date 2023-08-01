@@ -55,8 +55,8 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
         for k in range(eval_iters):
             X, Y = get_batch(data, **kwargs)
             with ctx:
-                _, loss = model(X, Y)
-            losses[k] = loss.item()
+                outputs = model(X, Y)
+            losses[k] = outputs['loss'].item()
         out[split] = losses.mean()
     model.train()
     return out
@@ -117,8 +117,8 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
             break
         for _ in range(opt.accumulation_steps):
             with ctx:
-                logits, loss = model(X, Y)
-                loss = loss / opt.accumulation_steps
+                outputs = model(X, Y)
+                loss = outputs['loss'] / opt.accumulation_steps
             X, Y = get_batch(dataloaders['train'], **get_batch_args)
             scaler.scale(loss).backward()
         if opt.grad_clip != 0.0:

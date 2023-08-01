@@ -1,1 +1,1 @@
-from m_gpt import GPT, GPTConfig
+from models.gpt import GPT, GPTConfig
