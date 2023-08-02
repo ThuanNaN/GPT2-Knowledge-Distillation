@@ -5,8 +5,8 @@ python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student \
                         --log-interval 10 \
                         --eval-interval 200 \
                         --eval-iters 500 \
-                        --batch-size 64 \
-                        --accumulation-steps 1 \
+                        --batch-size 16 \
+                        --accumulation-steps 4 \
                         --block-size 1024 \
                         --num-layer 12 \
                         --num-head 8 \
