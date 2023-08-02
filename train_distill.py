@@ -64,11 +64,18 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
 
 def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, iter_num, best_val_loss, dtype):
 
-    ce_loss_fct = nn.KLDivLoss(reduction="batchmean")
-    lm_loss_fct = nn.CrossEntropyLoss(ignore_index=-1)
-    alpha_ce = 0.5
     alpha_clm = 0.5
-    alpha_cos = 0.0
+    clm_loss_fct = nn.CrossEntropyLoss(ignore_index=-1)
+    
+    alpha_ce = 0.4
+    ce_loss_fct = nn.KLDivLoss(reduction="batchmean")
+
+    alpha_mse = 0.0
+    mse_loss_fct = nn.MSELoss(reduction="mean")
+
+    alpha_cos = 0.1
+    cosine_loss_fct = nn.CosineEmbeddingLoss(reduction="mean")
+
     temperature = 2.0
 
     t_model.eval()
@@ -136,24 +143,46 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
 
             s_logits, s_hidden_states = student_outputs['logits'], student_outputs['hidden_states']
             t_logits, t_hidden_states = teacher_outputs['logits'], teacher_outputs['hidden_states']
-            assert t_logits.size() == s_logits.size()
+            assert t_logits.size() == s_logits.size(), \
+                f"Teacher logits: {t_logits.size() } - Student logits: {s_logits.size()}"
             
-            loss_ce = (
-                ce_loss_fct(
-                    nn.functional.log_softmax(s_logits / temperature, dim=-1),
-                    nn.functional.softmax(t_logits / temperature, dim=-1),
-                )
-                * (temperature) ** 2
-            )
-            loss = alpha_ce * loss_ce
+            s_logits_slct = s_logits.view(-1, s_logits.size(-1))
+            t_logits_slct = t_logits.view(-1, s_logits.size(-1))
+            assert t_logits_slct.size() == s_logits_slct.size(), \
+                f"Teacher logits slct: {t_logits.size() } - Student logits slct: {s_logits.size()}"
 
-            loss_clm = lm_loss_fct(s_logits.view(-1, s_logits.size(-1)), Y.view(-1))
-            loss += alpha_clm * loss_clm
+            loss_clm = clm_loss_fct(s_logits.view(-1, s_logits.size(-1)), Y.view(-1))
+            # print("CLM LOSS: ", loss_clm.item())
 
-            # if alpha_cos > 0.0:
-            #     assert t_hidden_states.size() == s_hidden_states.size()
-            #     target = s_hidden_states_slct.new(s_hidden_states_slct.size(0)).fill_(1) 
-            #     loss_cos = self.cosine_loss_fct(s_hidden_states_slct, t_hidden_states_slct, target)
+            loss = alpha_clm * loss_clm
+
+            if alpha_ce > 0.0:
+                loss_ce = ce_loss_fct(
+                        nn.functional.log_softmax(s_logits_slct / temperature, dim=-1),
+                        nn.functional.softmax(t_logits_slct / temperature, dim=-1),
+                        ) * (temperature) ** 2
+                # print("CE LOSS: ", loss_ce.item())
+                    
+                loss += alpha_ce * loss_ce
+
+            if alpha_mse > 0.0:
+                loss_mse = mse_loss_fct(s_logits_slct, t_logits_slct)
+                # print("MSE LOSS: ", loss_mse.item())
+
+                loss += alpha_mse * loss_mse
+
+            if alpha_cos > 0.0:
+                assert t_hidden_states.size() == s_hidden_states.size()
+                dim = s_hidden_states.size(-1)
+                
+                s_hidden_states_slct = s_hidden_states.view(-1, dim)
+                t_hidden_states_slct = t_hidden_states.view(-1, dim)
+
+                target = s_hidden_states_slct.new(s_hidden_states_slct.size(0)).fill_(1) 
+                loss_cos = cosine_loss_fct(s_hidden_states_slct, t_hidden_states_slct, target)
+                # print("COS LOSS: ", loss_cos.item())
+
+                loss += alpha_cos * loss_cos
 
 
             loss = loss / opt.accumulation_steps
@@ -163,24 +192,24 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
             
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(s_model.parameters(), opt.grad_clip)
+            torch.nn.utils.clip_grad_norm_(student_model.parameters(), opt.grad_clip)
 
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
 
         # timing and logging
-        # t1 = time.time()
-        # dt = t1 - t0
-        # t0 = t1
-        # if iter_num % opt.log_interval == 0:
-        #     lossf = loss.item() * opt.accumulation_steps
-        #     if local_iter_num >= 5: # let the training loop settle a bit
-        #         mfu = s_model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
-        #         running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-        #     print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
-        # iter_num += 1
-        # local_iter_num += 1
+        t1 = time.time()
+        dt = t1 - t0
+        t0 = t1
+        if iter_num % opt.log_interval == 0:
+            lossf = loss.item() * opt.accumulation_steps
+            if local_iter_num >= 5: # let the training loop settle a bit
+                mfu = student_model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
+                running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
+            print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+        iter_num += 1
+        local_iter_num += 1
 
         # termination conditions
         if iter_num > opt.max_iters:
@@ -278,9 +307,11 @@ if __name__ == "__main__":
         optimizer.load_state_dict(initialized['checkpoint']['optimizer'])
     checkpoint = None # free up memory
 
+    print("Load teacher model: ")
     t_model = model_from_ckpt(ckpt_path="./ckpt/teacher.pt", device=device)
     t_model.to(device)
 
+    print("Start train model")
     train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_val_loss, dtype)
 
 
