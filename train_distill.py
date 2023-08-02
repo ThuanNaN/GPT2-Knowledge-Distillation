@@ -5,6 +5,7 @@ from contextlib import nullcontext
 import torch
 import math
 import numpy as np
+import torch.nn as nn
 from models.utils import initialize_model
 from utils import seed_everything, model_from_ckpt
 
@@ -62,6 +63,14 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
     return out
 
 def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, iter_num, best_val_loss, dtype):
+
+    ce_loss_fct = nn.KLDivLoss(reduction="batchmean")
+    lm_loss_fct = nn.CrossEntropyLoss(ignore_index=-1)
+    alpha_ce = 0.5
+    alpha_clm = 0.5
+    alpha_cos = 0.0
+    temperature = 2.0
+
     t_model.eval()
 
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
@@ -121,8 +130,6 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
             with ctx:
                 student_outputs= student_model(X, Y)
 
-                loss = student_outputs['loss'] / opt.accumulation_steps
-            
             with torch.no_grad():
                 with ctx:
                     teacher_outputs = teacher_model(X)
@@ -130,10 +137,26 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
             s_logits, s_hidden_states = student_outputs['logits'], student_outputs['hidden_states']
             t_logits, t_hidden_states = teacher_outputs['logits'], teacher_outputs['hidden_states']
             assert t_logits.size() == s_logits.size()
-        
-            mask = attention_mask.unsqueeze(-1).expand_as(s_logits)
+            
+            loss_ce = (
+                ce_loss_fct(
+                    nn.functional.log_softmax(s_logits / temperature, dim=-1),
+                    nn.functional.softmax(t_logits / temperature, dim=-1),
+                )
+                * (temperature) ** 2
+            )
+            loss = alpha_ce * loss_ce
+
+            loss_clm = lm_loss_fct(s_logits.view(-1, s_logits.size(-1)), Y.view(-1))
+            loss += alpha_clm * loss_clm
+
+            # if alpha_cos > 0.0:
+            #     assert t_hidden_states.size() == s_hidden_states.size()
+            #     target = s_hidden_states_slct.new(s_hidden_states_slct.size(0)).fill_(1) 
+            #     loss_cos = self.cosine_loss_fct(s_hidden_states_slct, t_hidden_states_slct, target)
 
 
+            loss = loss / opt.accumulation_steps
 
             X, Y = get_batch(dataloaders['train'], **get_batch_args)
             scaler.scale(loss).backward()
@@ -141,6 +164,7 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(s_model.parameters(), opt.grad_clip)
+
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad(set_to_none=True)

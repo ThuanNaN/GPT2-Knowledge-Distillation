@@ -1,21 +1,21 @@
 #!/usr/bin/bash
-python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student_distill \
+python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student \
                         --save-dir shakespeare \
                         --dataset shakespeare \
                         --log-interval 10 \
-                        --eval-interval 200 \
+                        --eval-interval 100 \
                         --eval-iters 500 \
-                        --batch-size 64 \
-                        --accumulation-steps 1 \
+                        --batch-size 8 \
+                        --accumulation-steps 8 \
                         --block-size 1024 \
                         --num-layer 12 \
                         --num-head 8 \
                         --num-embd 1024 \
                         --dropout 0.2 \
-                        --max-iters 5000 \
+                        --max-iters 2000 \
                         --learning-rate 1e-3 \
                         --decay-lr \
-                        --lr-decay-iters 5000 \
+                        --lr-decay-iters 2000 \
                         --min-lr 1e-4 \
                         --beta2 0.99 \
                         --warmup-iters 200 
