@@ -15,7 +15,7 @@ python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student \
                         --max-iters 1000 \
                         --learning-rate 1e-3 \
                         --decay-lr \
-                        --lr-decay-iters 1000 \
+                        --lr-decay-iters 2000 \
                         --min-lr 1e-4 \
                         --beta2 0.95 \
                         --warmup-iters 200 

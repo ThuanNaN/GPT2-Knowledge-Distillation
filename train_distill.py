@@ -1,6 +1,7 @@
 import os
 import argparse
 import time
+from tqdm import tqdm
 from contextlib import nullcontext
 import torch
 import math
@@ -48,12 +49,14 @@ def get_batch(data, batch_size, block_size):
 
 @torch.no_grad()
 def estimate_loss(model, dataloaders, eval_iters, **kwargs):
+    print("estimate loss ...")
     out = {}
     model.eval()
     for split in ['train', 'val']:
+        print(f"{split} set")
         data = dataloaders[split]
         losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
+        for k in tqdm(range(eval_iters), total=eval_iters):
             X, Y = get_batch(data, **kwargs)
             with ctx:
                 outputs = model(X, Y)
@@ -64,22 +67,17 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
 
 def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, iter_num, best_val_loss, dtype):
 
-    alpha_clm = 0.5
-    clm_loss_fct = nn.CrossEntropyLoss(ignore_index=-1)
-    
-    alpha_ce = 0.4
-    ce_loss_fct = nn.KLDivLoss(reduction="batchmean")
-
+    alpha_clm = 0.4
+    alpha_ce = 0.6
+    alpha_cos = 5
     alpha_mse = 0.0
-    mse_loss_fct = nn.MSELoss(reduction="mean")
-
-    alpha_cos = 0.1
-    cosine_loss_fct = nn.CosineEmbeddingLoss(reduction="mean")
-
     temperature = 2.0
 
-    t_model.eval()
+    ce_loss_fct = nn.KLDivLoss(reduction="batchmean")
+    mse_loss_fct = nn.MSELoss(reduction="sum")
+    cosine_loss_fct = nn.CosineEmbeddingLoss(reduction="mean") # max value = 2: 1 - cos
 
+    t_model.eval()
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
     if opt.compile:
         print("compiling the model... (takes a ~minute)")
@@ -134,13 +132,12 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
         if iter_num == 0 and opt.eval_only:
             break
         for _ in range(opt.accumulation_steps):
+            clm_loss, ce_loss, mse_loss, cos_loss = 0.0, 0.0, 0.0, 0.0
             with ctx:
                 student_outputs= student_model(X, Y)
-
             with torch.no_grad():
                 with ctx:
                     teacher_outputs = teacher_model(X)
-
             s_logits, s_hidden_states = student_outputs['logits'], student_outputs['hidden_states']
             t_logits, t_hidden_states = teacher_outputs['logits'], teacher_outputs['hidden_states']
             assert t_logits.size() == s_logits.size(), \
@@ -151,63 +148,57 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
             assert t_logits_slct.size() == s_logits_slct.size(), \
                 f"Teacher logits slct: {t_logits.size() } - Student logits slct: {s_logits.size()}"
 
-            loss_clm = clm_loss_fct(s_logits.view(-1, s_logits.size(-1)), Y.view(-1))
-            # print("CLM LOSS: ", loss_clm.item())
-
-            loss = alpha_clm * loss_clm
+            # loss_clm = clm_loss_fct(s_logits.view(-1, s_logits.size(-1)), Y.view(-1))
+            clm_loss = student_outputs['loss']
 
             if alpha_ce > 0.0:
-                loss_ce = ce_loss_fct(
+                ce_loss = ce_loss_fct(
                         nn.functional.log_softmax(s_logits_slct / temperature, dim=-1),
                         nn.functional.softmax(t_logits_slct / temperature, dim=-1),
-                        ) * (temperature) ** 2
-                # print("CE LOSS: ", loss_ce.item())
-                    
-                loss += alpha_ce * loss_ce
+                        ) * (temperature** 2)
 
             if alpha_mse > 0.0:
-                loss_mse = mse_loss_fct(s_logits_slct, t_logits_slct)
-                # print("MSE LOSS: ", loss_mse.item())
-
-                loss += alpha_mse * loss_mse
+                # Reproducing batchmean reduction
+                mse_loss = mse_loss_fct(s_logits_slct, t_logits_slct)/ s_logits_slct.size(0)  
 
             if alpha_cos > 0.0:
                 assert t_hidden_states.size() == s_hidden_states.size()
                 dim = s_hidden_states.size(-1)
-                
                 s_hidden_states_slct = s_hidden_states.view(-1, dim)
                 t_hidden_states_slct = t_hidden_states.view(-1, dim)
 
                 target = s_hidden_states_slct.new(s_hidden_states_slct.size(0)).fill_(1) 
-                loss_cos = cosine_loss_fct(s_hidden_states_slct, t_hidden_states_slct, target)
-                # print("COS LOSS: ", loss_cos.item())
+                cos_loss = cosine_loss_fct(s_hidden_states_slct, t_hidden_states_slct, target)
 
-                loss += alpha_cos * loss_cos
-
-
-            loss = loss / opt.accumulation_steps
+            total_loss =  alpha_clm * clm_loss + \
+                          alpha_ce * ce_loss + \
+                          alpha_mse * mse_loss + \
+                          alpha_cos * cos_loss
+            total_loss = total_loss / opt.accumulation_steps
 
             X, Y = get_batch(dataloaders['train'], **get_batch_args)
-            scaler.scale(loss).backward()
-            
+            scaler.scale(total_loss).backward()
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(student_model.parameters(), opt.grad_clip)
-
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
-
         # timing and logging
         t1 = time.time()
         dt = t1 - t0
         t0 = t1
         if iter_num % opt.log_interval == 0:
-            lossf = loss.item() * opt.accumulation_steps
+            total_lossf = total_loss.item() * opt.accumulation_steps
+            clm_lossf = clm_loss.item()
+            ce_lossf = ce_loss.item()
+            cos_lossf = cos_loss.item()
             if local_iter_num >= 5: # let the training loop settle a bit
                 mfu = student_model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
                 running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-            print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+            print(f"iter {iter_num}: total_loss {total_lossf:.4f}, \
+                clm_loss {clm_lossf:.4f}, ce_loss {ce_lossf:.4f}, cos_loss {cos_lossf:.4f}, \
+                  time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
         iter_num += 1
         local_iter_num += 1
 
@@ -307,11 +298,11 @@ if __name__ == "__main__":
         optimizer.load_state_dict(initialized['checkpoint']['optimizer'])
     checkpoint = None # free up memory
 
-    print("Load teacher model: ")
+    print("load teacher model ...")
     t_model = model_from_ckpt(ckpt_path="./ckpt/teacher.pt", device=device)
     t_model.to(device)
 
-    print("Start train model")
+    print("start train model")
     train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_val_loss, dtype)
 
 
