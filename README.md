@@ -49,7 +49,7 @@ bash run_adamw/finetune_gpt2m.sh
 bash run_adamw/train_student.sh
 bash run_adamw/train_student_distill.sh
 ```
-### 2. Feature works
+### 3. Feature works
 - [ ] Benchmark training model with SophiaG.
 - [ ] Apply quantization aware training.
 - [ ] Apply LoRA/QLoRA
