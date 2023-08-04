@@ -9,5 +9,4 @@ __pycache__/
 .vscode
 /wandb/
 test.py
-*.sh
 *.zip
