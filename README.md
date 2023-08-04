@@ -1,6 +1,6 @@
-# Optimize GPT2 model with knowledge distillation on tiny shakespeare dataset.
+# Optimize the GPT2 model with knowledge distillation on a tiny Shakespeare dataset.
 
-## 1. Optimize
+## 1. Distillation
 ### 1.1 Dataset
 - [Tiny Shakespeare](https://huggingface.co/datasets/tiny_shakespeare)
 
@@ -8,7 +8,7 @@
 - [Perplexity](https://huggingface.co/docs/transformers/perplexity)
 
 ### 1.3 Result
-All models is train or fintune with embedding length(emb) = 1024 and context length(ctx) = 1024.
+All models are trained or tuned with embedding length (emb) = 1024 and context length (ctx) = 1024.
 #### Teacher:
 
 | Model        | Layer | Head | Params | Size  |  loss  |
@@ -17,15 +17,15 @@ All models is train or fintune with embedding length(emb) = 1024 and context len
 
 
 #### Student:
-| Model 	  | Layer | Head | Params 	| Size  |  loss   |             |
+|   Model	    | Layer | Head | Params 	| Size  |  loss   |             |
 |:----------  | :----:|:----:|  :----:	| :---: |:-------:|:-----------:|
-|       	  |       |      |          |       | Scratch | Distillation|
-| GPT-student |   8   |  8   |  152M    | 584MB |   4.95  |   4.259    |
+|       	    |       |      |          |       | Scratch | Distillation|
+| GPT-student |   8   |  8   |  152M    | 584MB |   4.95  |    4.259    |
 
 ##### KD Loss:
 - Causal language model loss (clm loss): Cross Entropy Loss
-- Logits matching (ce loss): Kullback-Leibler Divergence Loss
-- Hidden state matching (cosin loss): Cosine Embedding Loss
+- Logits matching loss (ce loss): Kullback-Leibler Divergence Loss
+- Hidden state matching loss (cosin loss): Cosine Embedding Loss
 
 ![Training distillation](./figures/train_distill.png)
 
@@ -49,5 +49,8 @@ bash run_adamw/finetune_gpt2m.sh
 bash run_adamw/train_student.sh
 bash run_adamw/train_student_distill.sh
 ```
-
+### 2. Feature works
+- [ ] Benchmark training model with SophiaG.
+- [ ] Apply quantization aware training.
+- [ ] Apply LoRA/QLoRA
 
