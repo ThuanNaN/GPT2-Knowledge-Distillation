@@ -1,8 +1,9 @@
 #!/usr/bin/bash
-python train_adamw.py --save-dir shakespeare-char-gpt2m \
-                        --dataset shakespeare_char \
+python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name teacher \
+                        --save-dir shakespeare-gpt2m \
+                        --dataset shakespeare \
                         --log-interval 10 \
-                        --eval-interval 50 \
+                        --eval-interval 20 \
                         --eval-iters 500 \
                         --batch-size 4 \
                         --accumulation-steps 16 \

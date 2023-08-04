@@ -1,7 +1,7 @@
 import math
 import inspect
 from dataclasses import dataclass
-from sophia import SophiaG
+from optimizers.sophia import SophiaG
 
 import torch
 import torch.nn as nn
@@ -182,6 +182,8 @@ class GPT(nn.Module):
             x = block(x)
         x = self.transformer.ln_f(x)
 
+        last_hidden_states = None
+
         if targets is not None:
             # if we are given some desired targets also calculate the loss
             if not isinstance(targets, int):
@@ -195,7 +197,13 @@ class GPT(nn.Module):
             logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
             loss = None
 
-        return logits, loss
+        # return logits, loss
+    
+        return {
+                "loss": loss,
+                "logits": logits,
+                "hidden_states": last_hidden_states
+            }
 
     def crop_block_size(self, block_size):
         # model surgery to decrease the block size if necessary

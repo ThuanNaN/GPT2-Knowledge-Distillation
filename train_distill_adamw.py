@@ -1,12 +1,14 @@
 import os
 import argparse
 import time
+from tqdm import tqdm
 from contextlib import nullcontext
 import torch
 import math
 import numpy as np
+import torch.nn as nn
 from models.utils import initialize_model
-from utils import seed_everything
+from utils import seed_everything, model_from_ckpt
 
 seed_everything(1337)
 
@@ -47,12 +49,14 @@ def get_batch(data, batch_size, block_size):
 
 @torch.no_grad()
 def estimate_loss(model, dataloaders, eval_iters, **kwargs):
+    print("estimate loss ...")
     out = {}
     model.eval()
     for split in ['train', 'val']:
+        print(f"{split} set")
         data = dataloaders[split]
         losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
+        for k in tqdm(range(eval_iters), total=eval_iters):
             X, Y = get_batch(data, **kwargs)
             with ctx:
                 outputs = model(X, Y)
@@ -61,11 +65,23 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
     model.train()
     return out
 
-def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
+def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, iter_num, best_val_loss, dtype):
+
+    alpha_clm = 0.5
+    alpha_ce = 5
+    alpha_cos = 5
+    alpha_mse = 0.0
+    temperature = 2.0
+
+    ce_loss_fct = nn.KLDivLoss(reduction="batchmean")
+    mse_loss_fct = nn.MSELoss(reduction="sum")
+    cosine_loss_fct = nn.CosineEmbeddingLoss(reduction="mean") # max value = 2: 1 - cos
+
+    t_model.eval()
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
     if opt.compile:
         print("compiling the model... (takes a ~minute)")
-        model = torch.compile(model) # requires PyTorch 2.0
+        s_model = torch.compile(s_model) # requires PyTorch 2.0
     
     lr_decay_args = {
         "learning_rate": opt.learning_rate,
@@ -89,7 +105,7 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
 
         # evaluate the loss on train/val sets and write checkpoints
         if iter_num % opt.eval_interval == 0:
-            losses = estimate_loss(model, dataloaders, opt.eval_iters, **get_batch_args)
+            losses = estimate_loss(student_model, dataloaders, opt.eval_iters, **get_batch_args)
             print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
             if opt.wandb_log:
                 wandb.log({
@@ -103,7 +119,7 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
                 best_val_loss = losses['val']
                 if iter_num > 0:
                     checkpoint = {
-                        'model': model.state_dict(),
+                        'model': student_model.state_dict(),
                         'optimizer': optimizer.state_dict(),
                         'model_args': opt.model_args,
                         'iter_num': iter_num,
@@ -116,28 +132,73 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
         if iter_num == 0 and opt.eval_only:
             break
         for _ in range(opt.accumulation_steps):
+            clm_loss, ce_loss, mse_loss, cos_loss = 0.0, 0.0, 0.0, 0.0
             with ctx:
-                outputs = model(X, Y)
-                loss = outputs['loss'] / opt.accumulation_steps
+                student_outputs= student_model(X, Y)
+            with torch.no_grad():
+                with ctx:
+                    teacher_outputs = teacher_model(X)
+            s_logits, s_hidden_states = student_outputs['logits'], student_outputs['hidden_states']
+            t_logits, t_hidden_states = teacher_outputs['logits'], teacher_outputs['hidden_states']
+            assert t_logits.size() == s_logits.size(), \
+                f"Teacher logits: {t_logits.size() } - Student logits: {s_logits.size()}"
+            
+            s_logits_slct = s_logits.view(-1, s_logits.size(-1))
+            t_logits_slct = t_logits.view(-1, s_logits.size(-1))
+            assert t_logits_slct.size() == s_logits_slct.size(), \
+                f"Teacher logits slct: {t_logits.size() } - Student logits slct: {s_logits.size()}"
+
+            # loss_clm = clm_loss_fct(s_logits.view(-1, s_logits.size(-1)), Y.view(-1))
+            clm_loss = student_outputs['loss']
+
+            if alpha_ce > 0.0:
+                ce_loss = ce_loss_fct(
+                        nn.functional.log_softmax(s_logits_slct / temperature, dim=-1),
+                        nn.functional.softmax(t_logits_slct / temperature, dim=-1),
+                        ) * (temperature** 2)
+
+            if alpha_mse > 0.0:
+                # Reproducing batchmean reduction
+                mse_loss = mse_loss_fct(s_logits_slct, t_logits_slct)/ s_logits_slct.size(0)  
+
+            if alpha_cos > 0.0:
+                assert t_hidden_states.size() == s_hidden_states.size()
+                dim = s_hidden_states.size(-1)
+                s_hidden_states_slct = s_hidden_states.view(-1, dim)
+                t_hidden_states_slct = t_hidden_states.view(-1, dim)
+
+                target = s_hidden_states_slct.new(s_hidden_states_slct.size(0)).fill_(1) 
+                cos_loss = cosine_loss_fct(s_hidden_states_slct, t_hidden_states_slct, target)
+
+            total_loss =  alpha_clm * clm_loss + \
+                          alpha_ce * ce_loss + \
+                          alpha_mse * mse_loss + \
+                          alpha_cos * cos_loss
+            total_loss = total_loss / opt.accumulation_steps
+
             X, Y = get_batch(dataloaders['train'], **get_batch_args)
-            scaler.scale(loss).backward()
+            scaler.scale(total_loss).backward()
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip)
+            torch.nn.utils.clip_grad_norm_(student_model.parameters(), opt.grad_clip)
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
-
         # timing and logging
         t1 = time.time()
         dt = t1 - t0
         t0 = t1
         if iter_num % opt.log_interval == 0:
-            lossf = loss.item() * opt.accumulation_steps
+            total_lossf = total_loss.item() * opt.accumulation_steps
+            clm_lossf = clm_loss.item()
+            ce_lossf = ce_loss.item()
+            cos_lossf = cos_loss.item()
             if local_iter_num >= 5: # let the training loop settle a bit
-                mfu = model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
+                mfu = student_model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
                 running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-            print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+            print(f"iter {iter_num}: total_loss {total_lossf:.4f}, \
+                clm_loss {clm_lossf:.4f}, ce_loss {ce_lossf:.4f}, cos_loss {cos_lossf:.4f}, \
+                  time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
         iter_num += 1
         local_iter_num += 1
 
@@ -211,27 +272,37 @@ if __name__ == "__main__":
         "bias": opt.bias,
         "dropout": opt.dropout
     }
-    initialized = initialize_model(init_from = opt.init_from,
+    initialized = initialize_model(init_from = 'scratch',
                                     ckpt_dir = opt.save_dir,
                                     data_dir = opt.dataset,
                                     device = device,
                                     **model_cfg)
     
-    model = initialized['model']
+    s_model = initialized['model']
     opt.model_args = initialized['model_args']
     iter_num = initialized['resume_agrs']['iter_num']
     best_val_loss = initialized['resume_agrs']['best_val_loss']
 
     # crop down the model block size if desired, using model surgery
-    if opt.block_size < model.config.block_size:
-        model.crop_block_size(opt.block_size)
+    if opt.block_size < s_model.config.block_size:
+        s_model.crop_block_size(opt.block_size)
         opt.model_args['block_size'] = opt.block_size # so that the checkpoint will have the right value
-    model.to(device)
+    s_model.to(device)
 
     # optimizer
-    optimizer = model.configure_optimizers(opt.weight_decay, opt.learning_rate, (opt.beta1, opt.beta2), device_type)
+    optimizer = s_model.configure_optimizers(opt.weight_decay, 
+                                             opt.learning_rate, 
+                                             (opt.beta1, opt.beta2), 
+                                             device_type)
     if opt.init_from == 'resume':
         optimizer.load_state_dict(initialized['checkpoint']['optimizer'])
     checkpoint = None # free up memory
 
-    train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype)
+    print("load teacher model ...")
+    t_model = model_from_ckpt(ckpt_path="./ckpt/teacher.pt", device=device)
+    t_model.to(device)
+
+    print("start train model")
+    train_distill(opt, dataloaders, s_model, t_model, optimizer, iter_num, best_val_loss, dtype)
+
+

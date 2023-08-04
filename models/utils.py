@@ -1,8 +1,7 @@
 import os
 import pickle
 import torch
-from models.gpt_nano import GPT, GPTConfig
-
+from models import GPT, GPTConfig
 
 def initialize_model(
     init_from: str = "scratch",
@@ -37,8 +36,10 @@ def initialize_model(
         print("Initializing a new model from scratch")
         # determine the vocab size we'll use for from-scratch training
         if meta_vocab_size is None:
-            print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
-        model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
+            # print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
+            pass
+        # model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
+        model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50257
         gptconf = GPTConfig(**model_args)
         model = GPT(gptconf)
     elif init_from == 'resume':
