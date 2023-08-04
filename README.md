@@ -20,12 +20,13 @@ All models is train or fintune with embedding length(emb) = 1024 and context len
 | Model 	  | Layer | Head | Params 	| Size  |  loss   |             |
 |:----------  | :----:|:----:|  :----:	| :---: |:-------:|:-----------:|
 |       	  |       |      |          |       | Scratch | Distillation|
-| GPT-student |   8   |  8   |  152M    |       |   4.95  |   4.7296    |
+| GPT-student |   8   |  8   |  152M    | 584MB |   4.95  |   4.259    |
 
+![Training distillation](/figures/train_distill.png)
 
 #### Checkpoint
-- GPT2-medium: [Pre-trained](https://drive.google.com/file/d/1y7RYsqrGt7njagHAmGrlA2a6jseGwkGX/view?usp=drive_link)
-- GPT-student: [Scratch](https://drive.google.com/file/d/191iLVLmueqbAodR0-prCZERNkpEu658p/view?usp=sharing) - [Distillation]()
+- GPT2-medium: [Pre-trained](https://drive.google.com/file/d/1y7RYsqrGt7njagHAmGrlA2a6jseGwkGX/view?usp=sharing)
+- GPT-student: [Scratch](https://drive.google.com/file/d/191iLVLmueqbAodR0-prCZERNkpEu658p/view?usp=sharing) - [Distillation](https://drive.google.com/file/d/1HPpC1vDZ3-Xms0buUaiekyUMz_wTb3-i/view?usp=sharing)
 
 
 
@@ -44,12 +45,9 @@ python prepare.py
 ```
 #### 3.3 Training
 ```
-bash run/finetune_gpt2m.sh
-bash run/train_student.sh
-bash run/train_student_distill.sh
+bash run_adamw/finetune_gpt2m.sh
+bash run_adamw/train_student.sh
+bash run_adamw/train_student_distill.sh
 ```
-
-## 4. Citation
-
 
 
