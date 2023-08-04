@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student \
+python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student_drop0 \
                         --save-dir shakespeare_student \
                         --dataset shakespeare \
                         --log-interval 10 \
@@ -11,7 +11,7 @@ python train_adamw.py --wandb-log --wandb-project mle --wandb-run-name student \
                         --num-layer 8 \
                         --num-head 8 \
                         --num-embd 1024 \
-                        --dropout 0.2 \
+                        --dropout 0.1 \
                         --max-iters 1000 \
                         --learning-rate 1e-3 \
                         --decay-lr \

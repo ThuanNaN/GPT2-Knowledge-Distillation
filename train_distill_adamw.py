@@ -67,8 +67,8 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
 
 def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, iter_num, best_val_loss, dtype):
 
-    alpha_clm = 0.4
-    alpha_ce = 0.6
+    alpha_clm = 0.5
+    alpha_ce = 5
     alpha_cos = 5
     alpha_mse = 0.0
     temperature = 2.0

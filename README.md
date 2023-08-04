@@ -20,7 +20,7 @@ All models is train or fintune with embedding length(emb) = 1024 and context len
 | Model 	  | Layer | Head | Params 	| Size  |  loss   |             |
 |:----------  | :----:|:----:|  :----:	| :---: |:-------:|:-----------:|
 |       	  |       |      |          |       | Scratch | Distillation|
-| GPT-student |   8   |  8   |  152M    |       |   4.95  |             |
+| GPT-student |   8   |  8   |  152M    |       |   4.95  |   4.7296    |
 
 
 #### Checkpoint

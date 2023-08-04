@@ -1,6 +1,5 @@
 #!/usr/bin/bash
-python train_distill.py --wandb-log --wandb-project mle --wandb-run-name student_distill_clm_ce \
-                        --save-dir student_distill \
+python train_sophia.py --save-dir shakespeare_student \
                         --dataset shakespeare \
                         --log-interval 10 \
                         --eval-interval 20 \
