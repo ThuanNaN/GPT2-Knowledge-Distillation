@@ -22,7 +22,12 @@ All models is train or fintune with embedding length(emb) = 1024 and context len
 |       	  |       |      |          |       | Scratch | Distillation|
 | GPT-student |   8   |  8   |  152M    | 584MB |   4.95  |   4.259    |
 
-![Training distillation](/figures/train_distill.png)
+##### KD Loss:
+- Causal language model loss (clm loss): Cross Entropy Loss
+- Logits matching (ce loss): Kullback-Leibler Divergence Loss
+- Hidden state matching (cosin loss): Cosine Embedding Loss
+
+![Training distillation](./figures/train_distill.png)
 
 #### Checkpoint
 - GPT2-medium: [Pre-trained](https://drive.google.com/file/d/1y7RYsqrGt7njagHAmGrlA2a6jseGwkGX/view?usp=sharing)
