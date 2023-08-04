@@ -1,4 +1,4 @@
-# Optimize GPT2 model with knowledge distillation and quantization.
+# Optimize GPT2 model with knowledge distillation on tiny shakespeare dataset.
 
 ## 1. Optimize
 ### 1.1 Dataset
@@ -28,22 +28,17 @@ All models is train or fintune with embedding length(emb) = 1024 and context len
 - GPT2-medium: [Pre-trained](https://drive.google.com/file/d/1y7RYsqrGt7njagHAmGrlA2a6jseGwkGX/view?usp=sharing)
 - GPT-student: [Scratch](https://drive.google.com/file/d/191iLVLmueqbAodR0-prCZERNkpEu658p/view?usp=sharing) - [Distillation](https://drive.google.com/file/d/1HPpC1vDZ3-Xms0buUaiekyUMz_wTb3-i/view?usp=sharing)
 
-
-
-## 2. Quantazation
-
-
-### 3. Setup
-#### 3.1 Install packages
+### 2. Setup
+#### 2.1 Install packages
 ```
 pip install -r requirements.txt
 ```
-#### 3.2 Download and prepare dataset
+#### 2.2 Download and prepare dataset
 ```
 cd data/shakespeare
 python prepare.py
 ```
-#### 3.3 Training
+#### 2.3 Training
 ```
 bash run_adamw/finetune_gpt2m.sh
 bash run_adamw/train_student.sh
