@@ -45,7 +45,8 @@
   - [ ] Improving Knowledge Distillation via Regularizing Feature Norm and Direction \
         https://arxiv.org/pdf/2305.17007v1.pdf \
         https://github.com/wangyz1608/knowledge-distillation-via-nd
-
+  - [ ] TernaryBERT: Distillation-aware Ultra-low Bit BERT \
+        https://arxiv.org/pdf/2009.12812.pdf
 ### 2.5 Repository / implement paper
 - https://github.com/yoshitomo-matsubara/torchdistill
 - https://github.com/karpathy/nanoGPT
