@@ -7,6 +7,7 @@ import torch
 import math
 import numpy as np
 import torch.nn as nn
+from transformers import GPT2LMHeadModel, GPT2Config
 from utils import seed_everything
 
 seed_everything(1337)
@@ -132,7 +133,7 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
                 student_outputs= student_model(X, labels=X, output_hidden_states=True)
             with torch.no_grad():
                 with ctx:
-                    teacher_outputs = teacher_model(X)
+                    teacher_outputs = teacher_model(X, output_hidden_states=True)
             s_logits, s_hidden_states = student_outputs['logits'], student_outputs['hidden_states']
             t_logits, t_hidden_states = teacher_outputs['logits'], teacher_outputs['hidden_states']
             assert t_logits.size() == s_logits.size(), \
@@ -256,42 +257,40 @@ if __name__ == "__main__":
         "train": train_data,
         "val": val_data
     }
-    model_cfg = {
-        "n_layer": opt.num_layer, 
-        "n_head": opt.num_head,
-        "n_embd": opt.num_embd,
-        "block_size": opt.block_size,
-        "bias": opt.bias,
-        "dropout": opt.dropout
-    }
-    initialized = initialize_model(init_from = 'scratch',
-                                    ckpt_dir = opt.save_dir,
-                                    data_dir = opt.dataset,
-                                    device = device,
-                                    **model_cfg)
-    
-    s_model = initialized['model']
-    opt.model_args = initialized['model_args']
-    iter_num = initialized['resume_agrs']['iter_num']
-    best_val_loss = initialized['resume_agrs']['best_val_loss']
+    student_cfg = GPT2Config(
+        vocab_size=50257,
+        n_positions=opt.block_size,
+        n_embd=opt.num_embd,
+        n_layer=opt.num_layer,
+        n_head=opt.num_head,
+    )
 
-    # crop down the model block size if desired, using model surgery
-    if opt.block_size < s_model.config.block_size:
-        s_model.crop_block_size(opt.block_size)
-        opt.model_args['block_size'] = opt.block_size # so that the checkpoint will have the right value
+    s_model = GPT2LMHeadModel(student_cfg)
+
     s_model.to(device)
-
+    opt.model_args = s_model.config
+    iter_num = 0
+    best_val_loss = 1e9
+    
     # optimizer
-    optimizer = s_model.configure_optimizers(opt.weight_decay, 
-                                             opt.learning_rate, 
-                                             (opt.beta1, opt.beta2), 
-                                             device_type)
-    if opt.init_from == 'resume':
-        optimizer.load_state_dict(initialized['checkpoint']['optimizer'])
-    checkpoint = None # free up memory
-
+    optimizer = torch.optim.AdamW(
+        params=s_model.parameters(),
+        lr=opt.learning_rate,
+        weight_decay=opt.weight_decay, 
+        betas= (opt.beta1, opt.beta2)
+        )
+    
     print("load teacher model ...")
-    t_model = model_from_ckpt(ckpt_path="./ckpt/teacher.pt", device=device)
+    teacher_cfg = GPT2Config(
+        vocab_size=50257,
+        n_positions=1024,
+        n_embd=1024,
+        n_layer=24,
+        n_head=16,
+    )
+    t_model = GPT2LMHeadModel(teacher_cfg)
+    ckpt_path = "./ckpt/teacher.pt"
+    t_model.load_state_dict(torch.load(ckpt_path, map_location=device)['model'])
     t_model.to(device)
 
     print("start train model")
