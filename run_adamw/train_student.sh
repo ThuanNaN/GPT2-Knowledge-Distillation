@@ -3,7 +3,7 @@ python train_adamw.py --wandb-log --wandb-project mle2 --wandb-run-name student_
                         --save-dir shakespeare_student \
                         --dataset shakespeare \
                         --log-interval 10 \
-                        --eval-interval 20 \
+                        --eval-interval 50 \
                         --eval-iters 500 \
                         --batch-size 2 \
                         --accumulation-steps 16 \
