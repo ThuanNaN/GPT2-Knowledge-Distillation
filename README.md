@@ -13,14 +13,14 @@ All models is train or fintune with embedding length(emb) = 1024 and context len
 
 | Model        | Layer | Head | Params | Size  |  loss  |
 |:----------   |:----: |:----:| :----: | :---: |  :---: |
-| GPT2-medium  |  24   |  16  |  354M  | 1.3GB |  3.036 |
+| GPT2-medium  |  24   |  16  |  354M  | 1.3GB |  3.026 |
 
 
 #### Student:
 | Model 	  | Layer | Head | Params 	| Size  |  loss   |             |
 |:----------  | :----:|:----:|  :----:	| :---: |:-------:|:-----------:|
 |       	  |       |      |          |       | Scratch | Distillation|
-| GPT-student |   8   |  8   |  152M    | 584MB |   4.95  |   4.259    |
+| GPT-student |   8   |  8   |  152M    | 584MB |   4.9918  |   4.1676    |
 
 ##### KD Loss:
 - Causal language model loss (clm loss): Cross Entropy Loss
@@ -30,8 +30,8 @@ All models is train or fintune with embedding length(emb) = 1024 and context len
 ![Training distillation](./figures/train_distill.png)
 
 #### Checkpoint
-- GPT2-medium: [Pre-trained](https://drive.google.com/file/d/1y7RYsqrGt7njagHAmGrlA2a6jseGwkGX/view?usp=sharing)
-- GPT-student: [Scratch](https://drive.google.com/file/d/191iLVLmueqbAodR0-prCZERNkpEu658p/view?usp=sharing) - [Distillation](https://drive.google.com/file/d/1HPpC1vDZ3-Xms0buUaiekyUMz_wTb3-i/view?usp=sharing)
+- GPT2-medium: [Pre-trained](https://drive.google.com/file/d/1luJD4GNSLsrvMlZRGbzhNC9NOto2sQXI/view?usp=sharing)
+- GPT-student: [Scratch](https://drive.google.com/file/d/1k-J9xodbXm7T5etjyPDwoH5usEg3VFZA/view?usp=sharing) - [Distillation](https://drive.google.com/file/d/1bzNpJvkPuhxA-qxIkXNP2w9ywYFwaASQ/view?usp=sharing)
 
 ### 2. Setup
 #### 2.1 Install packages
