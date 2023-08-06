@@ -1,6 +1,7 @@
 import os
 import argparse
 import time
+from tqdm import tqdm
 from contextlib import nullcontext
 import torch
 import math
@@ -13,7 +14,6 @@ seed_everything(1337)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
-# note: float16 data type will automatically use a GradScaler
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
@@ -36,30 +36,30 @@ def get_lr(iter, warmup_iters, learning_rate, lr_decay_iters, min_lr):
 def get_batch(data, batch_size, block_size):
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
-        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+        x = x.pin_memory().to(device, non_blocking=True)
     else:
-        x, y = x.to(device), y.to(device)
-    return x, y
-
+        x = x.to(device)
+    return x
 
 @torch.no_grad()
 def estimate_loss(model, dataloaders, eval_iters, **kwargs):
+    print("estimate loss ...")
     out = {}
     model.eval()
     for split in ['train', 'val']:
+        print(f"{split} set")
         data = dataloaders[split]
         losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(data, **kwargs)
+        for k in tqdm(range(eval_iters), total=eval_iters):
+            X = get_batch(data, **kwargs)
             with ctx:
-                outputs = model(X, Y)
+                outputs = model(X, labels=X)
             losses[k] = outputs['loss'].item()
         out[split] = losses.mean()
     model.train()
     return out
+
 
 def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
@@ -78,10 +78,8 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
         "block_size": opt.block_size, 
     }
 
-    X, Y = get_batch(dataloaders['train'], **get_batch_args) # fetch the very first batch
+    X = get_batch(dataloaders['train'], **get_batch_args) # fetch the very first batch
     t0 = time.time()
-    local_iter_num = 0 # number of iterations in the lifetime of this process
-    running_mfu = -1.0
     while True:
         lr = get_lr(iter_num, **lr_decay_args) if opt.decay_lr else opt.learning_rate
         for param_group in optimizer.param_groups:
@@ -97,7 +95,6 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
                     "train/loss": losses['train'],
                     "val/loss": losses['val'],
                     "lr": lr,
-                    "mfu": running_mfu*100,
                 })
             if losses['val'] < best_val_loss or opt.always_save_ckpt:
                 best_val_loss = losses['val']
@@ -117,9 +114,9 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
             break
         for _ in range(opt.accumulation_steps):
             with ctx:
-                outputs = model(X, Y)
+                outputs = model(X, labels=X)
                 loss = outputs['loss'] / opt.accumulation_steps
-            X, Y = get_batch(dataloaders['train'], **get_batch_args)
+            X= get_batch(dataloaders['train'], **get_batch_args)
             scaler.scale(loss).backward()
         if opt.grad_clip != 0.0:
             scaler.unscale_(optimizer)
@@ -134,12 +131,8 @@ def train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype):
         t0 = t1
         if iter_num % opt.log_interval == 0:
             lossf = loss.item() * opt.accumulation_steps
-            if local_iter_num >= 5: # let the training loop settle a bit
-                mfu = model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
-                running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
-            print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+            print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms")
         iter_num += 1
-        local_iter_num += 1
 
         # termination conditions
         if iter_num > opt.max_iters:
@@ -211,19 +204,24 @@ if __name__ == "__main__":
         n_layer=opt.num_layer,
         n_head=opt.num_head,
     )
-    model = GPT2LMHeadModel(model_cfg)
     if opt.init_from == 'gpt2-medium':
-        model.from_pretrained('gpt2-medium')
+        print("Load model from GPT2-medium checkpoint")
+        model = GPT2LMHeadModel.from_pretrained('gpt2-medium')
+    else:
+        model = GPT2LMHeadModel(model_cfg)
 
-    opt.model_args = model_cfg
+
+    model.to(device)
+    opt.model_args = model.config
     iter_num = 0
     best_val_loss = 1e9
 
     # optimizer
     optimizer = torch.optim.AdamW(
+        params=model.parameters(),
         lr=opt.learning_rate,
         weight_decay=opt.weight_decay, 
         betas= (opt.beta1, opt.beta2)
         )
-
+    print('start training ...')
     train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype)

@@ -7,8 +7,7 @@ import torch
 import math
 import numpy as np
 import torch.nn as nn
-from models.utils import initialize_model
-from utils import seed_everything, model_from_ckpt
+from utils import seed_everything
 
 seed_everything(1337)
 
@@ -38,13 +37,11 @@ def get_lr(iter, warmup_iters, learning_rate, lr_decay_iters, min_lr):
 def get_batch(data, batch_size, block_size):
     ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':
-        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+        x = x.pin_memory().to(device, non_blocking=True)
     else:
-        x, y = x.to(device), y.to(device)
-    return x, y
+        x = x.to(device)
+    return x
 
 
 @torch.no_grad()
@@ -57,13 +54,14 @@ def estimate_loss(model, dataloaders, eval_iters, **kwargs):
         data = dataloaders[split]
         losses = torch.zeros(eval_iters)
         for k in tqdm(range(eval_iters), total=eval_iters):
-            X, Y = get_batch(data, **kwargs)
+            X = get_batch(data, **kwargs)
             with ctx:
-                outputs = model(X, Y)
+                outputs = model(X, labels=X)
             losses[k] = outputs['loss'].item()
         out[split] = losses.mean()
     model.train()
     return out
+
 
 def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, iter_num, best_val_loss, dtype):
 
@@ -96,8 +94,6 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
 
     X, Y = get_batch(dataloaders['train'], **get_batch_args) # fetch the very first batch
     t0 = time.time()
-    local_iter_num = 0 # number of iterations in the lifetime of this process
-    running_mfu = -1.0
     while True:
         lr = get_lr(iter_num, **lr_decay_args) if opt.decay_lr else opt.learning_rate
         for param_group in optimizer.param_groups:
@@ -113,7 +109,6 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
                     "train/loss": losses['train'],
                     "val/loss": losses['val'],
                     "lr": lr,
-                    "mfu": running_mfu*100,
                 })
             if losses['val'] < best_val_loss or opt.always_save_ckpt:
                 best_val_loss = losses['val']
@@ -134,7 +129,7 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
         for _ in range(opt.accumulation_steps):
             clm_loss, ce_loss, mse_loss, cos_loss = 0.0, 0.0, 0.0, 0.0
             with ctx:
-                student_outputs= student_model(X, Y)
+                student_outputs= student_model(X, labels=X, output_hidden_states=True)
             with torch.no_grad():
                 with ctx:
                     teacher_outputs = teacher_model(X)
@@ -162,6 +157,8 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
                 mse_loss = mse_loss_fct(s_logits_slct, t_logits_slct)/ s_logits_slct.size(0)  
 
             if alpha_cos > 0.0:
+                s_hidden_states = s_hidden_states[-1]
+                t_hidden_states = t_hidden_states[-1]
                 assert t_hidden_states.size() == s_hidden_states.size()
                 dim = s_hidden_states.size(-1)
                 s_hidden_states_slct = s_hidden_states.view(-1, dim)
@@ -193,15 +190,10 @@ def train_distill(opt, dataloaders, student_model, teacher_model, optimizer, ite
             clm_lossf = clm_loss.item()
             ce_lossf = ce_loss.item()
             cos_lossf = cos_loss.item()
-            if local_iter_num >= 5: # let the training loop settle a bit
-                mfu = student_model.estimate_mfu(opt.batch_size * opt.accumulation_steps, dt)
-                running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
             print(f"iter {iter_num}: total_loss {total_lossf:.4f}, \
                 clm_loss {clm_lossf:.4f}, ce_loss {ce_lossf:.4f}, cos_loss {cos_lossf:.4f}, \
-                  time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+                  time {dt*1000:.2f}ms")
         iter_num += 1
-        local_iter_num += 1
-
         # termination conditions
         if iter_num > opt.max_iters:
             break
