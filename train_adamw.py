@@ -5,7 +5,7 @@ from contextlib import nullcontext
 import torch
 import math
 import numpy as np
-from models.utils import initialize_model
+from transformers import GPT2LMHeadModel, GPT2Config
 from utils import seed_everything
 
 seed_everything(1337)
@@ -203,35 +203,27 @@ if __name__ == "__main__":
         "train": train_data,
         "val": val_data
     }
-    model_cfg = {
-        "n_layer": opt.num_layer, 
-        "n_head": opt.num_head,
-        "n_embd": opt.num_embd,
-        "block_size": opt.block_size,
-        "bias": opt.bias,
-        "dropout": opt.dropout
-    }
-    initialized = initialize_model(init_from = opt.init_from,
-                                    ckpt_dir = opt.save_dir,
-                                    data_dir = opt.dataset,
-                                    device = device,
-                                    **model_cfg)
-    
-    model = initialized['model']
-    opt.model_args = initialized['model_args']
-    iter_num = initialized['resume_agrs']['iter_num']
-    best_val_loss = initialized['resume_agrs']['best_val_loss']
 
-    # crop down the model block size if desired, using model surgery
-    if opt.block_size < model.config.block_size:
-        model.crop_block_size(opt.block_size)
-        opt.model_args['block_size'] = opt.block_size # so that the checkpoint will have the right value
-    model.to(device)
+    model_cfg = GPT2Config(
+        vocab_size=50257,
+        n_positions=opt.block_size,
+        n_embd=opt.num_embd,
+        n_layer=opt.num_layer,
+        n_head=opt.num_head,
+    )
+    model = GPT2LMHeadModel(model_cfg)
+    if opt.init_from == 'gpt2-medium':
+        model.from_pretrained('gpt2-medium')
+
+    opt.model_args = model_cfg
+    iter_num = 0
+    best_val_loss = 1e9
 
     # optimizer
-    optimizer = model.configure_optimizers(opt.weight_decay, opt.learning_rate, (opt.beta1, opt.beta2), device_type)
-    if opt.init_from == 'resume':
-        optimizer.load_state_dict(initialized['checkpoint']['optimizer'])
-    checkpoint = None # free up memory
+    optimizer = torch.optim.AdamW(
+        lr=opt.learning_rate,
+        weight_decay=opt.weight_decay, 
+        betas= (opt.beta1, opt.beta2)
+        )
 
     train(opt, dataloaders, model, optimizer, iter_num, best_val_loss, dtype)

@@ -1,1 +1,0 @@
-from .sophia import SophiaG
