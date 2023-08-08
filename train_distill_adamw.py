@@ -288,9 +288,10 @@ if __name__ == "__main__":
         n_layer=24,
         n_head=16,
     )
-    t_model = GPT2LMHeadModel(teacher_cfg)
-    ckpt_path = "./ckpt/teacher.pt"
-    t_model.load_state_dict(torch.load(ckpt_path, map_location=device)['model'])
+    t_ckpt_path = "./ckpt/teacher.pt"
+    t_ckpt = torch.load(t_ckpt_path, map_location=device)
+    t_model = GPT2LMHeadModel(t_ckpt['model_args'])
+    t_model.load_state_dict(t_ckpt['model'])
     t_model.to(device)
 
     print("start train model")
