@@ -1,9 +1,8 @@
 import torch
-# from models.gpt_nano import GPT, GPTConfig
-import pickle
+from transformers import GPT2LMHeadModel
 from contextlib import nullcontext
 import tiktoken
-from utils import seed_everything, model_from_ckpt
+from utils import seed_everything
 
 seed = 10
 seed_everything(seed)
@@ -21,26 +20,26 @@ device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.aut
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-ckpt_path = './ckpt/student.pt'
-model = model_from_ckpt(ckpt_path, device)
+ckpt_path = './ckpt/teacher.pt'
+ckpt = torch.load(ckpt_path)
+model = GPT2LMHeadModel(ckpt['model_args'])
+model.load_state_dict(ckpt['model'])
 model.to(device)
 
-# ok let's assume gpt-2 encodings by default
-print("No meta.pkl found, assuming GPT-2 encodings...")
 enc = tiktoken.get_encoding("gpt2")
 encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
 decode = lambda l: enc.decode(l)
 
-
-start = "What is the answer to work?"
+start = "Would you proceed especially against Caius Marcius?"
 start_ids = encode(start)
 x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
 
-# run generation
 with torch.no_grad():
     with ctx:
-        for k in range(1):
-            y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-            print(decode(y[0].tolist()))
-            print('---------------')
+        y = model.generate(inputs = x, 
+                            num_beams=4,
+                            do_sample=True,
+                            max_new_tokens=max_new_tokens)
+        print(decode(y[0].tolist()))
+        print('---------------')
 
