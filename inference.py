@@ -8,13 +8,7 @@ seed = 10
 seed_everything(seed)
 
 
-top_k = 200
-temperature = 0.8
-num_samples = 5
-max_new_tokens = 200
 device = 'cuda' 
-
-
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
@@ -39,7 +33,7 @@ with torch.no_grad():
         y = model.generate(inputs = x, 
                             num_beams=4,
                             do_sample=True,
-                            max_new_tokens=max_new_tokens)
+                            max_new_tokens=200)
         print(decode(y[0].tolist()))
         print('---------------')
 
